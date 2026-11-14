@@ -107,45 +107,45 @@ export const CustomersPage: React.FC = () => {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="h-full flex flex-col min-h-0 gap-4 overflow-hidden select-none">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
         <div>
-          <h2 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-[var(--text-primary)]">
             Customers & Khata Ledger
           </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-1">
+          <p className="text-xs text-[var(--text-muted)] mt-0.5">
             Real customer records, outstanding balances, and store ledger history.
           </p>
         </div>
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#F6B511] text-[#09090B] hover:bg-[#FFD04A] text-xs font-bold shadow-sm transition-all cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black text-xs font-bold shadow-sm transition-all cursor-pointer shrink-0"
         >
-          <Plus className="w-4 h-4" /> Add New Customer
+          <Plus className="w-4 h-4 text-[#FFD026] dark:text-black" /> Add New Customer
         </button>
       </div>
 
       {/* Main Two-Column View */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
         {/* Customer List Column */}
-        <div className="lg:col-span-1 glass-card rounded-2xl p-4 flex flex-col gap-3 min-h-[500px]">
-          <div className="relative">
+        <div className="lg:col-span-1 glass-card rounded-2xl p-4 flex flex-col gap-3 h-full min-h-0 overflow-hidden">
+          <div className="relative shrink-0">
             <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
             <input
               type="text"
               placeholder="Search store customers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-neutral-900/50 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[#F6B511]"
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
             />
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-0">
             {filtered.length === 0 ? (
               <div className="text-center py-12 text-[var(--text-muted)] text-xs">
-                No customers found. Add your first customer or use Voice Copilot.
+                No customers found. Add your first customer or use Voice Assistant.
               </div>
             ) : (
               filtered.map((c) => {
@@ -157,13 +157,13 @@ export const CustomersPage: React.FC = () => {
                     onClick={() => handleSelectCustomer(c)}
                     className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                       isSelected
-                        ? 'bg-neutral-900 border-[#F6B511] shadow-sm'
-                        : 'bg-neutral-900/30 border-transparent hover:border-[var(--border-color)] hover:bg-neutral-900/60'
+                        ? 'bg-[#FFD026] text-black border-[#E6B800] shadow-sm font-bold'
+                        : 'bg-black/[0.02] dark:bg-white/5 border-[var(--border-color)] hover:border-black/30 dark:hover:border-white/30'
                     }`}
                   >
                     <div className="truncate pr-2">
-                      <p className="text-xs font-bold text-[var(--text-primary)] truncate">{c.name}</p>
-                      <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1 mt-0.5">
+                      <p className={`text-xs truncate ${isSelected ? 'text-black font-extrabold' : 'text-[var(--text-primary)] font-bold'}`}>{c.name}</p>
+                      <p className={`text-[11px] flex items-center gap-1 mt-0.5 ${isSelected ? 'text-neutral-800 font-medium' : 'text-[var(--text-muted)]'}`}>
                         <Phone className="w-3 h-3" /> {c.phone}
                       </p>
                     </div>
@@ -172,8 +172,8 @@ export const CustomersPage: React.FC = () => {
                       <span
                         className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
                           hasBalance
-                            ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
-                            : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                            ? isSelected ? 'bg-rose-600 text-white' : 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                            : isSelected ? 'bg-emerald-700 text-white' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
                         }`}
                       >
                         {hasBalance ? `₹${(c.balance || 0).toLocaleString('en-IN')} Udhaar` : 'Cleared'}
@@ -187,33 +187,33 @@ export const CustomersPage: React.FC = () => {
         </div>
 
         {/* Selected Customer Detailed Ledger */}
-        <div className="lg:col-span-2 glass-card rounded-2xl p-6 flex flex-col justify-between min-h-[500px]">
+        <div className="lg:col-span-2 glass-card rounded-2xl p-5 flex flex-col h-full min-h-0 overflow-hidden">
           {selectedCustomer ? (
-            <div className="space-y-6 flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               {/* Customer Header & Quick Action Buttons */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-[var(--border-color)]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)] shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-[#F6B511] text-[#09090B] flex items-center justify-center font-black text-xl shadow-[0_0_15px_rgba(246,181,17,0.3)]">
+                  <div className="w-11 h-11 rounded-2xl bg-[#FFD026] text-black flex items-center justify-center font-black text-xl border border-[#E6B800] shadow-sm shrink-0">
                     {selectedCustomer.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="text-xl font-black text-[var(--text-primary)]">{selectedCustomer.name}</h3>
-                    <p className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
+                    <h3 className="text-lg sm:text-xl font-black text-[var(--text-primary)]">{selectedCustomer.name}</h3>
+                    <p className="text-xs font-medium text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
                       <span>Phone: {selectedCustomer.phone || 'N/A'}</span>
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setShowTxModal('credit')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-bold transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 hover:bg-rose-500/25 text-xs font-bold transition-all cursor-pointer"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" /> + Add Udhaar
                   </button>
                   <button
                     onClick={() => setShowTxModal('payment')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 text-xs font-bold transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 text-xs font-bold transition-all cursor-pointer"
                   >
                     <ArrowDownLeft className="w-3.5 h-3.5" /> ✓ Record Payment
                   </button>
@@ -221,56 +221,56 @@ export const CustomersPage: React.FC = () => {
               </div>
 
               {/* 3 Summary KPI Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-xl bg-neutral-900/60 border border-[var(--border-color)]">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-3 shrink-0">
+                <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/5 border border-[var(--border-color)]">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     Outstanding Udhaar
                   </span>
-                  <p className="text-2xl font-black text-rose-400 mt-1">
+                  <p className="text-xl sm:text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">
                     ₹{(selectedCustomer.balance || 0).toLocaleString('en-IN')}
                   </p>
-                  <span className="text-[10px] text-[var(--text-muted)]">Due to shop</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-medium">Due to shop</span>
                 </div>
 
-                <div className="p-4 rounded-xl bg-neutral-900/60 border border-[var(--border-color)]">
+                <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/5 border border-[var(--border-color)]">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     Total Credit Given
                   </span>
-                  <p className="text-xl font-bold text-[var(--text-primary)] mt-1">
+                  <p className="text-lg sm:text-xl font-black text-[var(--text-primary)] mt-1">
                     ₹{(selectedCustomer.total_credit || 0).toLocaleString('en-IN')}
                   </p>
-                  <span className="text-[10px] text-[var(--text-muted)]">Lifetime credit</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-medium">Lifetime credit</span>
                 </div>
 
-                <div className="p-4 rounded-xl bg-neutral-900/60 border border-[var(--border-color)]">
+                <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/5 border border-[var(--border-color)]">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
                     Total Paid Back
                   </span>
-                  <p className="text-xl font-bold text-emerald-400 mt-1">
+                  <p className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
                     ₹{(selectedCustomer.total_paid || 0).toLocaleString('en-IN')}
                   </p>
-                  <span className="text-[10px] text-[var(--text-muted)]">Payments received</span>
+                  <span className="text-[10px] text-[var(--text-muted)] font-medium">Payments received</span>
                 </div>
               </div>
 
               {/* Transaction Ledger Table */}
-              <div className="flex-1 flex flex-col min-h-0">
-                <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider mb-3 flex items-center justify-between">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider mb-2 flex items-center justify-between shrink-0">
                   <span className="flex items-center gap-2">
-                    <History className="w-4 h-4 text-[#F6B511]" /> Customer Khata Ledger
+                    <History className="w-4 h-4 text-[#FFD026]" /> Customer Khata Ledger
                   </span>
                   <span className="text-[10px] font-normal text-[var(--text-muted)]">
                     {customerTxns.length} records found
                   </span>
                 </h4>
 
-                <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[280px]">
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-0">
                   {loadingTxns ? (
                     <div className="p-8 text-center text-xs text-[var(--text-muted)] animate-pulse">
                       Loading customer ledger transactions...
                     </div>
                   ) : customerTxns.length === 0 ? (
-                    <div className="p-8 rounded-xl border border-[var(--border-color)] text-center text-xs text-[var(--text-muted)] bg-neutral-900/30">
+                    <div className="p-8 rounded-xl border border-[var(--border-color)] text-center text-xs text-[var(--text-muted)] bg-black/[0.02] dark:bg-white/5">
                       No transactions recorded yet for {selectedCustomer.name}.
                       <br />
                       Speak <em>"{selectedCustomer.name} ka 2000 rupaye udhaar likh do"</em> in Voice Assistant to record immediately.
@@ -279,7 +279,7 @@ export const CustomersPage: React.FC = () => {
                     customerTxns.map((tx) => (
                       <div
                         key={tx.id}
-                        className="p-3 rounded-xl bg-neutral-900/40 border border-[var(--border-color)] flex items-center justify-between text-xs"
+                        className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/5 border border-[var(--border-color)] flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center gap-3">
                           <div

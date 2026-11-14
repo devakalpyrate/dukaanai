@@ -4,9 +4,6 @@ export type PageId =
   | 'customers'
   | 'products'
   | 'sales'
-  | 'suppliers'
-  | 'billing'
-  | 'automation'
   | 'reports'
   | 'settings';
 
@@ -21,6 +18,18 @@ export type AssistantState =
   | 'success'
   | 'error';
 
+export interface VoiceHistoryItem {
+  id: string;
+  timestamp: number;
+  command: string;
+  responseMessage: string;
+  customer?: string;
+  amount?: string;
+  action?: string;
+  success: boolean;
+  audioUrl?: string;
+}
+
 export interface UserProfile {
   id: number;
   name: string;
@@ -32,7 +41,35 @@ export interface UserProfile {
   shop_name: string;
   gstin?: string;
   upi_id?: string;
+  upi_pin?: string;
   address?: string;
+}
+
+export interface ShopSettings {
+  id?: number;
+  shop_id: number;
+  user_id: number;
+  upi_id: string;
+  upi_pin?: string;
+  phone: string;
+  shop_name: string;
+  shop_address: string;
+  gstin: string;
+  theme: string;
+  language: string;
+  low_stock_alert: number;
+  updated_at?: string;
+}
+
+export interface AppNotification {
+  id: number;
+  shop_id: number;
+  user_id: number;
+  title: string;
+  message: string;
+  type: 'credit' | 'payment' | 'system' | 'alert' | 'announcement' | 'info';
+  is_read: number;
+  created_at: string;
 }
 
 export interface Customer {

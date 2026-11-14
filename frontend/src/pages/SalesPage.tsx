@@ -52,7 +52,7 @@ export const SalesPage: React.FC = () => {
             placeholder="Search by customer name or transaction ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-neutral-900/50 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
           />
         </div>
 
@@ -61,10 +61,10 @@ export const SalesPage: React.FC = () => {
             <button
               key={t}
               onClick={() => setFilterType(t)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold capitalize transition-all cursor-pointer ${
                 filterType === t
-                  ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                  ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
               }`}
             >
               {t === 'all' ? 'All Transactions' : t === 'credit' ? 'Udhar (Credit)' : 'Jama (Payment)'}
@@ -77,7 +77,7 @@ export const SalesPage: React.FC = () => {
       <div className="glass-card rounded-2xl p-6 overflow-hidden">
         {filtered.length === 0 ? (
           <div className="text-center py-12 text-[var(--text-muted)] text-xs">
-            No transactions found. Record your first transaction using Voice Copilot or Customer Ledger.
+            No transactions found. Record your first transaction using Voice Assistant or Customer Ledger.
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -92,15 +92,15 @@ export const SalesPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
                 {filtered.map((t) => (
-                  <tr key={t.id} className="hover:bg-neutral-900/40 light:hover:bg-neutral-100 transition-colors">
+                  <tr key={t.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.04] transition-colors">
                     <td className="py-3.5 font-mono text-[var(--text-primary)] font-bold">{t.id}</td>
                     <td className="py-3.5 font-bold text-[var(--text-primary)]">{t.customer_name}</td>
                     <td className="py-3.5">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
                           t.type === 'credit'
-                            ? 'bg-neutral-900 light:bg-rose-500/10 text-white light:text-rose-600 border border-neutral-700 light:border-rose-500/30'
-                            : 'bg-neutral-900 light:bg-emerald-500/10 text-white light:text-emerald-600 border border-neutral-700 light:border-emerald-500/30'
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/25'
+                            : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25'
                         }`}
                       >
                         {t.type === 'credit' ? 'Credit Issued' : 'Payment Received'}
@@ -108,7 +108,7 @@ export const SalesPage: React.FC = () => {
                     </td>
                     <td
                       className={`py-3.5 text-right font-black ${
-                        t.type === 'credit' ? 'text-white light:text-rose-600' : 'text-white light:text-emerald-600'
+                        t.type === 'credit' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
                       }`}
                     >
                       {t.type === 'credit' ? '-' : '+'}₹{t.amount.toLocaleString('en-IN')}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   User,
   Store,
@@ -7,6 +7,8 @@ import {
   Palette,
   Check,
   Save,
+  QrCode,
+  CheckCircle2,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { UserProfile } from '../types';
@@ -30,10 +32,70 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
   const [address, setAddress] = useState(user.address || '');
 
   const [upiId, setUpiId] = useState(user.upi_id || '');
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [payeeName, setPayeeName] = useState(user.shop_name || '');
+  const [paymentPhone, setPaymentPhone] = useState(user.phone || '');
 
-  const handleSave = (e: React.FormEvent) => {
+  const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchSettings = async () => {
+      const token = localStorage.getItem('dukaanai_token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/settings', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings) {
+            const s = data.settings;
+            if (s.upi_id !== undefined) setUpiId(s.upi_id || '');
+            if (s.phone) {
+              setPhone(s.phone);
+              setPaymentPhone(s.phone);
+            }
+            if (s.shop_name) {
+              setShopName(s.shop_name);
+              setPayeeName(s.shop_name);
+            }
+            if (s.shop_address) setAddress(s.shop_address);
+            if (s.gstin) setGstin(s.gstin);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSaving(true);
+    const token = localStorage.getItem('dukaanai_token');
+    if (token) {
+      try {
+        await fetch('/api/settings', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            upi_id: upiId,
+            phone,
+            shop_name: shopName,
+            shop_address: address,
+            gstin,
+            theme,
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to persist settings:', err);
+      }
+    }
+
     onUpdateUser({
       name,
       email,
@@ -43,6 +105,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
       address,
       upi_id: upiId,
     });
+    setSaving(false);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
   };
@@ -55,13 +118,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
           Account & Store Settings
         </h2>
         <p className="text-xs text-[var(--text-muted)] mt-1">
-          Manage your personal profile, business identity, UPI payout IDs, and UI appearance preferences.
+          Manage your personal profile, business identity, UPI payments, and store preferences.
         </p>
       </div>
 
       {savedSuccess && (
-        <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs flex items-center gap-2">
-          <Check className="w-4 h-4 text-emerald-400" /> Settings updated successfully in session state.
+        <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+          <Check className="w-4 h-4 text-emerald-400" /> Settings updated and saved successfully.
         </div>
       )}
 
@@ -71,57 +134,57 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
         <div className="glass-card rounded-2xl p-2 space-y-1 h-fit">
           <button
             onClick={() => setActiveTab('profile')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
               activeTab === 'profile'
-                ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100'
+                ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
-            <User className="w-4 h-4 text-[var(--text-primary)]" /> Personal Profile
+            <User className="w-4 h-4 text-current" /> Personal Profile
           </button>
 
           <button
             onClick={() => setActiveTab('shop')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
               activeTab === 'shop'
-                ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100'
+                ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
-            <Store className="w-4 h-4 text-[var(--text-primary)]" /> Shop Information
+            <Store className="w-4 h-4 text-current" /> Shop Information
           </button>
 
           <button
             onClick={() => setActiveTab('payments')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
               activeTab === 'payments'
-                ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100'
+                ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
-            <CreditCard className="w-4 h-4 text-[var(--text-primary)]" /> Payment & UPI Details
+            <CreditCard className="w-4 h-4 text-current" /> Payment & UPI Details
           </button>
 
           <button
             onClick={() => setActiveTab('appearance')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
               activeTab === 'appearance'
-                ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100'
+                ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
-            <Palette className="w-4 h-4 text-[var(--text-primary)]" /> Theme & Appearance
+            <Palette className="w-4 h-4 text-current" /> Theme & Appearance
           </button>
 
           <button
             onClick={() => setActiveTab('security')}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
               activeTab === 'security'
-                ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400'
-                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100'
+                ? 'bg-[#FFD026] text-black border border-[#E6B800] shadow-xs'
+                : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
             }`}
           >
-            <Shield className="w-4 h-4 text-[var(--text-primary)]" /> Security & Passwords
+            <Shield className="w-4 h-4 text-current" /> Security & Passwords
           </button>
         </div>
 
@@ -130,7 +193,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
           <form onSubmit={handleSave} className="space-y-4 text-xs">
             {activeTab === 'profile' && (
               <div className="space-y-4">
-                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-white/10 pb-2">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-2">
                   Personal Owner Information
                 </h3>
                 <div>
@@ -139,7 +202,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
                 <div>
@@ -148,17 +211,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Mobile Number</label>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">
+                    Mobile Number (मोबाइल नंबर) <span className="text-[#E2452D] font-bold">*</span>
+                  </label>
                   <input
                     type="tel"
+                    required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="Enter phone number"
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                    placeholder="Enter 10-digit mobile number"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
               </div>
@@ -166,7 +232,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
 
             {activeTab === 'shop' && (
               <div className="space-y-4">
-                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-white/10 pb-2">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-2">
                   Store & Business Details
                 </h3>
                 <div>
@@ -175,27 +241,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                     type="text"
                     value={shopName}
                     onChange={(e) => setShopName(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">GSTIN / Registration No.</label>
-                  <input
-                    type="text"
-                    value={gstin}
-                    onChange={(e) => setGstin(e.target.value)}
-                    placeholder="Optional GSTIN"
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Physical Shop Address</label>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Physical Shop Address / Location (शॉप का पता)</label>
                   <textarea
                     rows={3}
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Enter store location"
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400"
+                    placeholder="Shop address or location where store operates"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">GSTIN / Registration No. (Optional)</label>
+                  <input
+                    type="text"
+                    value={gstin}
+                    onChange={(e) => setGstin(e.target.value)}
+                    placeholder="e.g. 21AAAAA0000A1Z5"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026] font-mono"
                   />
                 </div>
               </div>
@@ -203,18 +269,71 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
 
             {activeTab === 'payments' && (
               <div className="space-y-4">
-                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-white/10 pb-2">
+                <h3 className="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-color)] pb-2">
                   Payment Collection & UPI Configuration
                 </h3>
+
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-xs flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                  <div>
+                    <div className="font-bold text-emerald-300">Official NPCI & Banking Standard</div>
+                    <div className="text-[11px] text-emerald-400/90 mt-0.5">
+                      To receive customer payments, only your UPI ID and Merchant Name are required. Under NPCI security guidelines, an application should never ask for or store your secret UPI PIN.
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Merchant UPI ID (VPA)</label>
                   <input
                     type="text"
                     value={upiId}
                     onChange={(e) => setUpiId(e.target.value)}
-                    placeholder="e.g. yourname@upi"
-                    className="w-full p-2.5 rounded-xl bg-white/5 border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-cyan-400 font-mono"
+                    placeholder="e.g. storename@okhdfcbank or 9876543210@paytm"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026] font-mono"
                   />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    Customer payments sent to this UPI ID are deposited directly into your linked bank account.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">
+                    Payee / Merchant Display Name
+                  </label>
+                  <input
+                    type="text"
+                    value={payeeName}
+                    onChange={(e) => setPayeeName(e.target.value)}
+                    placeholder="e.g. Mahabir Book Store"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    The name displayed on the customer's payment app (Google Pay, PhonePe, Paytm) when scanning your store QR code.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">
+                    Payment Alert Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    placeholder="e.g. 9876543210"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026] font-mono"
+                  />
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                    Receives real-time payment alerts and audio confirmations.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs">
+                  <QrCode className="w-4 h-4 shrink-0 text-amber-400" />
+                  <span>
+                    Your Store QR code is dynamically rendered using standard UPI URI specifications (<code className="font-mono text-[10px] bg-black/20 px-1 py-0.5 rounded">upi://pay?pa=...</code>).
+                  </span>
                 </div>
               </div>
             )}
@@ -226,27 +345,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div
-                    onClick={() => setTheme('dark')}
-                    className={`p-4 rounded-xl border cursor-pointer flex flex-col items-center gap-2 ${
-                      theme === 'dark'
-                        ? 'bg-neutral-900 border-white text-white font-bold'
-                        : 'bg-neutral-900/30 border-neutral-800 text-[var(--text-secondary)]'
+                    onClick={() => setTheme('light')}
+                    className={`p-4 rounded-2xl border cursor-pointer flex flex-col items-center gap-2 transition-all ${
+                      theme === 'light'
+                        ? 'bg-[#FFD026] text-black border-[#E6B800] font-bold shadow-sm'
+                        : 'bg-black/[0.02] dark:bg-white/5 border-[var(--border-color)] text-[var(--text-secondary)]'
                     }`}
                   >
-                    <div className="w-12 h-8 rounded bg-black border border-white" />
-                    <span className="font-bold text-xs">Pure Black (Dark)</span>
+                    <div className="w-12 h-8 rounded-lg bg-[#FAF8F5] border border-[#E5E0D8]" />
+                    <span className="font-bold text-xs">Warm Cream (Signature)</span>
                   </div>
 
                   <div
-                    onClick={() => setTheme('light')}
-                    className={`p-4 rounded-xl border cursor-pointer flex flex-col items-center gap-2 ${
-                      theme === 'light'
-                        ? 'bg-neutral-100 border-black text-black font-bold'
-                        : 'bg-neutral-100/50 border-neutral-300 text-[var(--text-secondary)]'
+                    onClick={() => setTheme('dark')}
+                    className={`p-4 rounded-2xl border cursor-pointer flex flex-col items-center gap-2 transition-all ${
+                      theme === 'dark'
+                        ? 'bg-neutral-900 border-white text-white font-bold shadow-sm'
+                        : 'bg-black/[0.02] dark:bg-white/5 border-[var(--border-color)] text-[var(--text-secondary)]'
                     }`}
                   >
-                    <div className="w-12 h-8 rounded bg-white border border-black" />
-                    <span className="font-bold text-xs">Pure White (Light)</span>
+                    <div className="w-12 h-8 rounded-lg bg-[#121316] border border-[#2E3038]" />
+                    <span className="font-bold text-xs">Dark Contrast</span>
                   </div>
                 </div>
               </div>
@@ -262,7 +381,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                   <input
                     type="password"
                     placeholder="••••••••"
-                    className="w-full p-2.5 rounded-xl bg-neutral-900/50 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
                 <div>
@@ -270,7 +389,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                   <input
                     type="password"
                     placeholder="••••••••"
-                    className="w-full p-2.5 rounded-xl bg-neutral-900/50 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
               </div>
@@ -279,9 +398,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
             <div className="pt-4 border-t border-[var(--border-color)] flex justify-end">
               <button
                 type="submit"
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-black light:bg-neutral-900 light:text-white font-bold cursor-pointer hover:opacity-90 shadow-sm"
+                disabled={saving}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black font-bold cursor-pointer shadow-sm transition-all disabled:opacity-50"
               >
-                <Save className="w-4 h-4" /> Save Changes
+                <Save className="w-4 h-4 text-[#FFD026] dark:text-black" />
+                {saving ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </form>

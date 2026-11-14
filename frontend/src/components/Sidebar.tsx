@@ -5,9 +5,6 @@ import {
   Users,
   Package,
   ArrowLeftRight,
-  Truck,
-  Receipt,
-  Zap,
   BarChart3,
   Settings,
   ChevronLeft,
@@ -44,9 +41,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'customers', label: 'Customers & Khata', icon: Users },
     { id: 'products', label: 'Products & Inventory', icon: Package },
     { id: 'sales', label: 'Sales & Transactions', icon: ArrowLeftRight },
-    { id: 'suppliers', label: 'Suppliers & Orders', icon: Truck },
-    { id: 'billing', label: 'Billing & Invoices', icon: Receipt },
-    { id: 'automation', label: 'Communication & Auto', icon: Zap },
     { id: 'reports', label: 'Reports & Analytics', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings },
   ];
@@ -58,34 +52,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }`}
     >
       {/* Brand Header */}
-      <div className="p-4 flex items-center justify-between border-b border-[var(--border-color)]">
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="w-10 h-10 rounded-xl bg-neutral-900 border border-neutral-700 light:bg-neutral-100 light:border-neutral-300 flex items-center justify-center text-[var(--text-primary)] shrink-0">
-            <Sparkles className="w-5 h-5" />
+      {collapsed ? (
+        <div className="py-3 px-1 flex flex-col items-center justify-center gap-2 border-b border-[var(--border-color)]">
+          <div className="w-10 h-10 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-xl shrink-0 shadow-sm border border-[#E6B800]">
+            द
           </div>
-          {!collapsed && (
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
+            title="Expand Sidebar"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <div className="p-4 flex items-center justify-between border-b border-[var(--border-color)]">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-xl shrink-0 shadow-sm border border-[#E6B800]">
+              द
+            </div>
             <div className="truncate">
-              <h1 className="text-lg font-black tracking-tight flex items-center gap-1 text-[var(--text-primary)]">
-                Dukaan<span className="text-[var(--text-primary)] underline decoration-neutral-500">AI</span>
+              <h1 className="text-lg font-black tracking-tight text-[var(--text-primary)]">
+                Dukaan<span className="text-[#FFD026] drop-shadow-sm">AI</span>
               </h1>
-              <p className="text-[11px] font-medium text-[var(--text-muted)] truncate max-w-[150px]">
+              <p className="text-[11px] font-semibold text-[var(--text-muted)] truncate max-w-[140px]">
                 {shopName}
               </p>
             </div>
-          )}
-        </div>
+          </div>
 
-        <button
-          onClick={onToggleCollapse}
-          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 light:hover:bg-black/5 transition-all cursor-pointer"
-          title={collapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-        >
-          {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-      </div>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer shrink-0"
+            title="Collapse Sidebar"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Navigation List */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1.5 scrollbar-thin">
+      <nav className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-1.5 custom-scrollbar">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
@@ -95,18 +102,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
               key={item.id}
               onClick={() => onSelectPage(item.id)}
               title={collapsed ? item.label : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all cursor-pointer ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all cursor-pointer ${
                 isActive
-                  ? 'bg-neutral-900 light:bg-neutral-200 text-white light:text-black border border-neutral-700 light:border-neutral-400 font-semibold shadow-sm'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-neutral-900/40 light:hover:bg-neutral-100 border border-transparent'
-              } ${collapsed ? 'justify-center px-0' : ''}`}
+                  ? 'bg-[#FFD026] text-black font-bold border border-[#E6B800] shadow-sm'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 border border-transparent font-medium'
+              } ${collapsed ? 'justify-center px-0 w-11 h-11 mx-auto' : ''}`}
             >
-              <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-white light:text-black' : 'text-[var(--text-muted)]'}`} />
+              <Icon className={`w-5 h-5 shrink-0 ${isActive ? 'text-black' : 'text-[var(--text-muted)]'}`} />
               {!collapsed && (
                 <span className="truncate flex-1 text-left">{item.label}</span>
               )}
               {!collapsed && item.badge && (
-                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-neutral-800 light:bg-neutral-300 text-neutral-300 light:text-neutral-800 border border-neutral-700 light:border-neutral-400">
+                <span
+                  className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md ${
+                    isActive
+                      ? 'bg-black text-[#FFD026]'
+                      : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                  }`}
+                >
                   {item.badge}
                 </span>
               )}
@@ -115,18 +128,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Voice Assistant Shortcut Card */}
-      {!collapsed && (
-        <div className="p-3 m-3 rounded-xl bg-neutral-900/60 light:bg-neutral-100 border border-[var(--border-color)]">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Mic className="w-4 h-4 text-white light:text-black animate-pulse" />
-            <span className="text-xs font-bold text-white light:text-black">Voice Copilot</span>
+      {/* Bottom Store Status Pill */}
+      <div className="p-3 border-t border-[var(--border-color)]">
+        {collapsed ? (
+          <div className="flex justify-center" title="Voice AI Engine Ready">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           </div>
-          <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">
-            Hands-free recording for khata credits and stock updates.
-          </p>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center gap-2.5 p-2 rounded-xl bg-black/5 dark:bg-white/5 border border-[var(--border-color)]">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+            <div className="truncate text-left">
+              <p className="text-[11px] font-bold text-[var(--text-primary)] truncate">Voice AI Ready</p>
+              <p className="text-[10px] text-[var(--text-muted)] truncate">Multilingual Voice Engine</p>
+            </div>
+          </div>
+        )}
+      </div>
     </aside>
   );
 };

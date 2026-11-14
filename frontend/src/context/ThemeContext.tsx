@@ -14,10 +14,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem('dukaanai_theme') as Theme | null;
     if (saved === 'dark' || saved === 'light') return saved;
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light';
-    }
-    return 'dark';
+    return 'light';
   });
 
   useEffect(() => {

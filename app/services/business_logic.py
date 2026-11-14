@@ -102,14 +102,14 @@ class CustomerService:
     def update_customer(shop_id: int, customer_id: int, name: Optional[str] = None, phone: Optional[str] = None) -> bool:
         ShopVerificationService.verify_shop_exists(shop_id)
         c_id = validate_id(customer_id, "customer_id")
-        existing = customer_queries.get_customer_by_id(c_id)
-        if not existing or existing["shop_id"] != shop_id:
+        existing = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
+        if not existing:
             raise EntityNotFoundError(f"Customer ID {c_id} does not belong to shop {shop_id}")
 
         v_name = validate_string(name, "name", max_length=100, required=False) if name is not None else None
         v_phone = validate_string(phone, "phone", max_length=15, required=False) if phone is not None else None
 
-        return customer_queries.update_customer(c_id, name=v_name, phone=v_phone)
+        return customer_queries.update_customer(c_id, shop_id=shop_id, name=v_name, phone=v_phone)
 
     @staticmethod
     def delete_customer(shop_id: int, customer_id: int, confirmed: bool = False) -> bool:
@@ -117,11 +117,11 @@ class CustomerService:
             raise BusinessLogicError("Customer deletion requires explicit user confirmation.")
         ShopVerificationService.verify_shop_exists(shop_id)
         c_id = validate_id(customer_id, "customer_id")
-        existing = customer_queries.get_customer_by_id(c_id)
-        if not existing or existing["shop_id"] != shop_id:
+        existing = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
+        if not existing:
             raise EntityNotFoundError(f"Customer ID {c_id} does not belong to shop {shop_id}")
 
-        return customer_queries.delete_customer(c_id)
+        return customer_queries.delete_customer(c_id, shop_id=shop_id)
 
 class ProductService:
     @staticmethod
@@ -222,8 +222,8 @@ class TransactionService:
     ) -> dict:
         ShopVerificationService.verify_shop_exists(shop_id)
         c_id = validate_id(customer_id, 'customer_id')
-        cust = customer_queries.get_customer_by_id(c_id)
-        if not cust or cust['shop_id'] != shop_id:
+        cust = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
+        if not cust:
             raise EntityNotFoundError(f'Customer ID {c_id} does not belong to shop {shop_id}')
 
         t_type = validate_transaction_type(transaction_type)

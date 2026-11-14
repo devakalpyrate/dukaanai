@@ -6,18 +6,25 @@ import {
   Send,
   CheckCircle2,
   AlertCircle,
-  Database,
-  ArrowRight,
-  User,
-  CreditCard,
+  Activity,
   Layers,
-  Cpu,
-  Check,
-  RefreshCw,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Volume2,
+  VolumeX,
+  Play,
+  X,
+  Download,
+  Loader2,
+  History,
+  Clock,
+  Trash2,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
 import { Orb } from '../components/Orb';
 import { Waveform } from '../components/Waveform';
-import { AssistantState } from '../types';
+import { AssistantState, VoiceHistoryItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
 
 interface VoiceAssistantPageProps {
@@ -26,24 +33,12 @@ interface VoiceAssistantPageProps {
 
 const API_BASE = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8000';
 
-const SAMPLE_COMMANDS = [
-  'Shubham ka 2000 rupees ka udhaar likh do',
-  'Shubham is taking udhaar from 10 rupees',
-  'Shaashwat ne ₹500 cash jama kar diye',
-  'Sugar ka stock check karo',
-];
-
-interface FlowStep {
-  name: string;
-  detail: string;
-  status: 'pending' | 'active' | 'success' | 'error';
-}
-
 export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
   const [state, setState] = useState<AssistantState>('idle');
+  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
   const [selectedLang, setSelectedLang] = useState<'auto' | 'hi' | 'en' | 'or'>('auto');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordDuration, setRecordDuration] = useState<number>(0);
@@ -55,12 +50,20 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     'Tap the microphone or choose a quick prompt to execute store transactions.'
   );
 
-  const [pipelineSteps, setPipelineSteps] = useState<FlowStep[]>([
-    { name: 'Voice Input', detail: 'Waiting for audio / instruction', status: 'pending' },
-    { name: 'Groq AI Parsing', detail: 'Extract customer & amount', status: 'pending' },
-    { name: 'Shop Verification', detail: 'Verify customer & shop boundary', status: 'pending' },
-    { name: 'SQLite DB Ledger', detail: 'Record transaction & update balance', status: 'pending' },
-  ]);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const [progressLabel, setProgressLabel] = useState<string>('Ready for store instruction');
+
+  const [autoSpeakEnabled, setAutoSpeakEnabled] = useState<boolean>(true);
+  const [showAudioGenModal, setShowAudioGenModal] = useState<boolean>(false);
+  const [genTextInput, setGenTextInput] = useState<string>('रमेश के खाते में ₹500 का उधार लिख दिया गया है।');
+  const [genAudioUrl, setGenAudioUrl] = useState<string | null>(null);
+  const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
+  const [genAudioError, setGenAudioError] = useState<string | null>(null);
+
+  const [history, setHistory] = useState<VoiceHistoryItem[]>([]);
+  const [activeSpeechText, setActiveSpeechText] = useState<string | null>(null);
+  const [speakingWords, setSpeakingWords] = useState<string[]>([]);
+  const [currentWordIndex, setCurrentWordIndex] = useState<number>(-1);
 
   const [lastResult, setLastResult] = useState<{
     action?: string;
@@ -69,6 +72,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     message?: string;
     success?: boolean;
     txId?: number;
+    audioUrl?: string;
   } | null>(null);
 
   const timerIntervalRef = useRef<number | null>(null);
@@ -77,11 +81,65 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRecRef = useRef<any>(null);
+
+  const getShopId = (): number => {
+    const userStr = localStorage.getItem('dukaanai_user');
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.shop_id) return u.shop_id;
+      } catch {}
+    }
+    return 1;
+  };
+
+  // Load persistent history on mount
+  useEffect(() => {
+    const shopId = getShopId();
+    try {
+      const saved = localStorage.getItem(`dukaanai_voice_history_${shopId}`);
+      if (saved) {
+        setHistory(JSON.parse(saved));
+      }
+    } catch {}
+  }, []);
+
+  const saveToHistory = (item: VoiceHistoryItem) => {
+    const shopId = getShopId();
+    setHistory((prev) => {
+      const filtered = prev.filter((h) => h.id !== item.id);
+      const updated = [item, ...filtered].slice(0, 50);
+      try {
+        localStorage.setItem(`dukaanai_voice_history_${shopId}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const clearHistory = () => {
+    const shopId = getShopId();
+    setHistory([]);
+    try {
+      localStorage.removeItem(`dukaanai_voice_history_${shopId}`);
+    } catch {}
+  };
 
   useEffect(() => {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (currentAudioRef.current) {
+        try {
+          currentAudioRef.current.pause();
+        } catch {}
+      }
+      if (speechRecRef.current) {
+        try {
+          speechRecRef.current.stop();
+        } catch {}
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         try {
           mediaRecorderRef.current.stop();
@@ -95,6 +153,47 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     };
   }, []);
 
+  const playSpeechWithWordHighlight = (audioUrl: string, speechText: string) => {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+      } catch {}
+    }
+
+    const audio = new Audio(audioUrl);
+    currentAudioRef.current = audio;
+
+    const words = speechText.trim().split(/\s+/).filter(Boolean);
+    setSpeakingWords(words);
+    setCurrentWordIndex(0);
+    setActiveSpeechText(speechText);
+    setState('speaking');
+
+    audio.ontimeupdate = () => {
+      if (audio.duration && audio.duration > 0) {
+        const progress = audio.currentTime / audio.duration;
+        const index = Math.min(words.length - 1, Math.floor(progress * words.length));
+        setCurrentWordIndex(index);
+      }
+    };
+
+    audio.onplay = () => {
+      setState('speaking');
+    };
+
+    audio.onended = () => {
+      setState('success');
+      setCurrentWordIndex(words.length);
+    };
+
+    audio.onerror = () => {
+      setState('success');
+    };
+
+    audio.play().catch(() => {});
+  };
+
   const getAuthHeaders = (): HeadersInit => {
     const token = localStorage.getItem('dukaanai_token');
     const headers: Record<string, string> = {
@@ -106,17 +205,6 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     return headers;
   };
 
-  const getShopId = (): number => {
-    const userStr = localStorage.getItem('dukaanai_user');
-    if (userStr) {
-      try {
-        const u = JSON.parse(userStr);
-        if (u.shop_id) return u.shop_id;
-      } catch {}
-    }
-    return 1;
-  };
-
   const executeCommand = async (commandText: string) => {
     const text = commandText.trim();
     if (!text) return;
@@ -124,16 +212,10 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     setTranscript(text);
     setTextInput('');
     setState('thinking');
-    setStatusSubtitle('Extracting canonical intent via Groq LLM...');
+    setStatusSubtitle('Processing...');
+    setProgressPercent(35);
+    setProgressLabel('35%');
     setLastResult(null);
-
-    // Update Step 1: Input Captured
-    setPipelineSteps([
-      { name: 'Voice / Text Input', detail: `Captured: "${text}"`, status: 'success' },
-      { name: 'Groq AI Parsing', detail: 'Analyzing customer & amount...', status: 'active' },
-      { name: 'Shop Verification', detail: 'Pending', status: 'pending' },
-      { name: 'SQLite DB Ledger', detail: 'Pending', status: 'pending' },
-    ]);
 
     const token = localStorage.getItem('dukaanai_token');
     const shopId = getShopId();
@@ -151,7 +233,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
 
       if (!intentRes.ok) {
         const errJson = await intentRes.json().catch(() => ({}));
-        throw new Error(errJson.error?.message || errJson.detail || 'Failed to understand intent');
+        throw new Error(errJson.error?.message || errJson.detail || 'Failed to understand instruction');
       }
 
       const intentData = await intentRes.json();
@@ -165,21 +247,11 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
         '0';
 
       setState('executing');
-      setStatusSubtitle(`Executing action: ${intentData.action || intentData.intent}...`);
+      setStatusSubtitle('Updating ledger...');
+      setProgressPercent(75);
+      setProgressLabel('75%');
 
-      // Update Step 2: Intent Extracted & Step 3: Active
-      setPipelineSteps([
-        { name: 'Voice / Text Input', detail: `Captured: "${text}"`, status: 'success' },
-        {
-          name: 'Groq AI Parsing',
-          detail: `Target: ${customerName} • Amt: ₹${amountVal} • Action: ${intentData.action}`,
-          status: 'success',
-        },
-        { name: 'Shop Verification', detail: `Shop #${shopId} • Checking customer record...`, status: 'active' },
-        { name: 'SQLite DB Ledger', detail: 'Writing entry to database...', status: 'pending' },
-      ]);
-
-      // 2. Execute Validated Action into Database
+      // 2. Execute Action
       const execRes = await fetch(`${API_BASE}/api/action/execute`, {
         method: 'POST',
         headers: getAuthHeaders(),
@@ -191,60 +263,104 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
 
       if (!execRes.ok) {
         const errJson = await execRes.json().catch(() => ({}));
-        throw new Error(errJson.error?.message || errJson.detail || 'Failed to execute database action');
+        throw new Error(errJson.error?.message || errJson.detail || 'Failed to update ledger');
       }
 
       const execData = await execRes.json();
       const txResult = execData.result || {};
+      const speechText = execData.spoken_message || execData.message || 'Done';
 
       setState('success');
-      setStatusSubtitle('Database modified and recorded in Khata ledger.');
+      setStatusSubtitle(speechText);
+      setProgressPercent(100);
+      setProgressLabel('100%');
 
-      // Update All Steps to Complete
-      setPipelineSteps([
-        { name: 'Voice / Text Input', detail: `Captured: "${text}"`, status: 'success' },
-        {
-          name: 'Groq AI Parsing',
-          detail: `Identified: ${customerName} • ₹${amountVal} • ${intentData.action}`,
-          status: 'success',
-        },
-        {
-          name: 'Shop Verification',
-          detail: `Verified Shop #${shopId} & Customer ${customerName}`,
-          status: 'success',
-        },
-        {
-          name: 'SQLite DB Ledger',
-          detail: `✓ Logged in transactions table • Tx #${txResult.id || 'OK'}`,
-          status: 'success',
-        },
-      ]);
+      let currentAudioUrl: string | undefined = undefined;
+
+      if (autoSpeakEnabled && speechText) {
+        try {
+          const speakRes = await fetch(`${API_BASE}/api/voice/speak`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ text: speechText }),
+          });
+          if (speakRes.ok) {
+            const audioBlob = await speakRes.blob();
+            currentAudioUrl = URL.createObjectURL(audioBlob);
+            setGenAudioUrl(currentAudioUrl);
+            playSpeechWithWordHighlight(currentAudioUrl, speechText);
+          } else {
+            setActiveSpeechText(speechText);
+            setSpeakingWords(speechText.trim().split(/\s+/).filter(Boolean));
+            setCurrentWordIndex(-1);
+          }
+        } catch {
+          setActiveSpeechText(speechText);
+          setSpeakingWords(speechText.trim().split(/\s+/).filter(Boolean));
+          setCurrentWordIndex(-1);
+        }
+      } else {
+        setActiveSpeechText(speechText);
+        setSpeakingWords(speechText.trim().split(/\s+/).filter(Boolean));
+        setCurrentWordIndex(-1);
+      }
+
+      const histItem: VoiceHistoryItem = {
+        id: `vh_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: Date.now(),
+        command: text,
+        responseMessage: speechText,
+        customer: customerName !== 'Customer' ? customerName : undefined,
+        amount: amountVal && amountVal !== '0' ? `₹${amountVal}` : undefined,
+        action: execData.action || intentData.action,
+        success: true,
+        audioUrl: currentAudioUrl,
+      };
+      saveToHistory(histItem);
 
       setLastResult({
         action: execData.action || intentData.action,
         customer: customerName,
-        amount: amountVal ? `₹${amountVal}` : undefined,
-        message: execData.message,
+        amount: amountVal && amountVal !== '0' ? `₹${amountVal}` : undefined,
+        message: speechText,
         success: true,
         txId: txResult.id,
+        audioUrl: currentAudioUrl,
       });
     } catch (err: any) {
       setState('error');
-      setStatusSubtitle('Could not process request. Please try again.');
-
-      setPipelineSteps((prev) =>
-        prev.map((step, idx) => {
-          if (step.status === 'active') {
-            return { ...step, status: 'error', detail: err.message || 'Failed' };
-          }
-          return step;
-        })
-      );
+      setStatusSubtitle('Could not process request.');
+      setProgressPercent(0);
+      setProgressLabel('');
 
       setLastResult({
         message: err.message,
         success: false,
       });
+    }
+  };
+
+  const handleGenerateCustomAudio = async (textToSpeak: string) => {
+    if (!textToSpeak.trim()) return;
+    setIsGeneratingAudio(true);
+    setGenAudioError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/voice/speak`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ text: textToSpeak.trim() }),
+      });
+      if (!res.ok) {
+        throw new Error('Speech synthesis failed.');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setGenAudioUrl(url);
+      playSpeechWithWordHighlight(url, textToSpeak.trim());
+    } catch (err: any) {
+      setGenAudioError(err.message || 'Audio generation error.');
+    } finally {
+      setIsGeneratingAudio(false);
     }
   };
 
@@ -308,31 +424,56 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       };
 
       recorder.start(250);
+
+      // Web Speech recognition for streaming live words directly inside RECOGNIZED COMMAND box
+      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRec) {
+        try {
+          const rec = new SpeechRec();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.lang = selectedLang === 'hi' ? 'hi-IN' : selectedLang === 'or' ? 'or-IN' : selectedLang === 'en' ? 'en-IN' : 'hi-IN';
+          rec.onresult = (ev: any) => {
+            let interim = '';
+            for (let i = ev.resultIndex; i < ev.results.length; ++i) {
+              interim += ev.results[i][0].transcript;
+            }
+            if (interim.trim()) {
+              setTranscript(interim);
+            }
+          };
+          rec.start();
+          speechRecRef.current = rec;
+        } catch {}
+      }
+
       setIsRecording(true);
       setState('listening');
       setTranscript('');
-      setStatusSubtitle('Listening to speech...');
+      setStatusSubtitle('Listening...');
+      setProgressPercent(20);
+      setProgressLabel('20%');
       setRecordDuration(0);
-
-      setPipelineSteps([
-        { name: 'Voice Input', detail: 'Recording audio from microphone...', status: 'active' },
-        { name: 'Groq AI Parsing', detail: 'Pending', status: 'pending' },
-        { name: 'Shop Verification', detail: 'Pending', status: 'pending' },
-        { name: 'SQLite DB Ledger', detail: 'Pending', status: 'pending' },
-      ]);
 
       timerIntervalRef.current = window.setInterval(() => {
         setRecordDuration((prev) => prev + 1);
       }, 1000);
     } catch (err: any) {
-      setStatusSubtitle('Microphone permission not granted or unsupported. You can type or click the quick commands below.');
+      setStatusSubtitle('Microphone unavailable.');
       setIsRecording(false);
+      setProgressPercent(0);
+      setProgressLabel('');
     }
   };
 
   const stopListeningAndProcess = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (speechRecRef.current) {
+      try {
+        speechRecRef.current.stop();
+      } catch {}
+    }
     setIsRecording(false);
     setAudioLevel(0);
 
@@ -345,15 +486,10 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
 
   const handleAudioUpload = async (blob: Blob) => {
     setState('transcribing');
-    setStatusSubtitle('Transcribing speech using SraVaani STT...');
+    setStatusSubtitle('Processing...');
+    setProgressPercent(45);
+    setProgressLabel('45%');
     const token = localStorage.getItem('dukaanai_token');
-
-    setPipelineSteps([
-      { name: 'Voice Input', detail: 'Transcribing via local SraVaani STT...', status: 'active' },
-      { name: 'Groq AI Parsing', detail: 'Pending', status: 'pending' },
-      { name: 'Shop Verification', detail: 'Pending', status: 'pending' },
-      { name: 'SQLite DB Ledger', detail: 'Pending', status: 'pending' },
-    ]);
 
     try {
       const formData = new FormData();
@@ -370,36 +506,38 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error?.message || errJson.detail || 'STT transcription failed');
+        throw new Error(errJson.error?.message || errJson.detail || 'Voice transcription failed');
       }
 
       const data = await res.json();
       const recognized = data.transcribed_text || '';
       if (!recognized.trim()) {
         setState('clarification');
-        setStatusSubtitle('No speech detected in audio. Please try again.');
+        setStatusSubtitle('No speech detected.');
+        setProgressPercent(0);
+        setProgressLabel('');
         return;
       }
 
+      setTranscript(recognized);
       await executeCommand(recognized);
     } catch (err: any) {
       setState('error');
-      setStatusSubtitle('Could not transcribe audio.');
-      setPipelineSteps((prev) =>
-        prev.map((step, idx) => (idx === 0 ? { ...step, status: 'error', detail: err.message } : step))
-      );
+      setStatusSubtitle('Error processing audio.');
+      setProgressPercent(0);
+      setProgressLabel('');
     }
   };
 
   const getStateTitle = () => {
     switch (state) {
       case 'listening': return 'Listening...';
-      case 'transcribing': return 'Transcribing Speech...';
-      case 'thinking': return 'Analyzing Intent...';
-      case 'executing': return 'Updating Dukaan Ledger...';
-      case 'speaking': return 'Assistant Responding';
+      case 'transcribing': return 'Processing Voice...';
+      case 'thinking': return 'Analyzing Command...';
+      case 'executing': return 'Updating Khata...';
+      case 'speaking': return 'Responding';
       case 'clarification': return 'Clarification Required';
-      case 'success': return 'Action Recorded in DB';
+      case 'success': return 'Ledger Updated';
       case 'error': return 'Request Failed';
       case 'idle':
       default:
@@ -433,194 +571,426 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   };
 
   return (
-    <div className="h-full w-full flex flex-col justify-between py-1 px-1 select-none overflow-hidden gap-2">
-      {/* 1. TOP STATUS BAR (Non-overlapping single row) */}
-      <div className="w-full flex items-center justify-between px-2 shrink-0">
-        <div
-          className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold tracking-wide transition-all ${getStatusColor()}`}
-        >
-          <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
-          <span>{getStateTitle()}</span>
-        </div>
+    <div className="h-full w-full flex flex-col lg:flex-row gap-3 py-1 px-1 select-none overflow-hidden">
+      {/* LEFT: MAIN VOICE ASSISTANT AREA */}
+      <div className="flex-1 flex flex-col justify-between overflow-hidden gap-2 min-w-0">
+        {/* 1. TOP STATUS BAR */}
+        <div className="w-full flex flex-wrap items-center justify-between px-2 shrink-0 gap-2">
+          <div
+            className={`flex items-center gap-2 px-3.5 py-1 rounded-full border text-xs font-bold tracking-wide transition-all ${getStatusColor()}`}
+          >
+            <span className="w-2 h-2 rounded-full bg-current animate-pulse" />
+            <span>{getStateTitle()}</span>
+          </div>
 
-        <div className="flex items-center gap-1 bg-neutral-900/60 p-1 rounded-full border border-[var(--border-color)] text-xs font-semibold text-[var(--text-muted)]">
-          {(['auto', 'hi', 'en', 'or'] as const).map((lang) => (
+          <div className="flex items-center gap-2">
+            {/* Auto-Speech Toggle */}
             <button
-              key={lang}
-              onClick={() => setSelectedLang(lang)}
-              className={`px-2.5 py-0.5 rounded-full transition-all cursor-pointer text-[11px] ${
-                selectedLang === lang
-                  ? 'bg-neutral-800 text-white font-bold border border-neutral-600 shadow-sm'
-                  : 'hover:text-[var(--text-primary)]'
+              onClick={() => setAutoSpeakEnabled(!autoSpeakEnabled)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all cursor-pointer shadow-xs ${
+                autoSpeakEnabled
+                  ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-500/30'
+                  : 'bg-black/5 dark:bg-white/5 text-[var(--text-muted)] border-[var(--border-color)]'
               }`}
+              title="Toggle automatic speech synthesis after transactions"
             >
-              {lang === 'auto' ? '🇮🇳 Auto' : lang === 'hi' ? 'हिंदी' : lang === 'en' ? 'EN' : 'ଓଡ଼ିଆ'}
+              {autoSpeakEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-rose-500" />
+              )}
+              <span>Auto-Speech {autoSpeakEnabled ? 'ON' : 'OFF'}</span>
             </button>
-          ))}
-        </div>
-      </div>
 
-      {/* 2. CENTER ORB & WAVEFORM (Proportionally scaled) */}
-      <div className="flex flex-col items-center justify-center my-auto shrink min-h-0">
-        <div className="scale-75 sm:scale-85 md:scale-95 transition-transform origin-center">
-          <Orb state={state} audioLevel={audioLevel} />
+            {/* Audio Generator Button */}
+            <button
+              onClick={() => setShowAudioGenModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#FFD026] text-black border border-[#E6B800] hover:bg-[#F6B511] transition-all cursor-pointer shadow-xs"
+              title="Open AI Audio Generator"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Audio Generator</span>
+            </button>
+
+            {/* Language Selector */}
+            <div className="hidden sm:flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full border border-[var(--border-color)] text-xs font-bold text-[var(--text-muted)]">
+              {(['auto', 'hi', 'en', 'or'] as const).map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setSelectedLang(lang)}
+                  className={`px-3 py-0.5 rounded-full transition-all cursor-pointer text-[11px] ${
+                    selectedLang === lang
+                      ? 'bg-[#FFD026] text-black font-extrabold shadow-xs'
+                      : 'hover:text-[var(--text-primary)] font-semibold'
+                  }`}
+                >
+                  {lang === 'auto' ? '🇮🇳 Auto' : lang === 'hi' ? 'हिंदी' : lang === 'en' ? 'EN' : 'ଓଡ଼ିଆ'}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        <div className="w-48 sm:w-64 h-7 mt-1">
-          <Waveform state={state} audioLevel={audioLevel} />
-        </div>
-
-        <div className="text-center mt-1">
-          <h3 className="text-base sm:text-lg font-bold tracking-tight text-[var(--text-primary)]">
-            {getStateTitle()}
-          </h3>
-          <p className="text-[11px] sm:text-xs text-[var(--text-muted)] max-w-sm mt-0.5 line-clamp-1">
-            {statusSubtitle}
-          </p>
-        </div>
-      </div>
-
-      {/* 3. DUAL PANELS: LEFT (RECOGNIZED COMMAND) & RIGHT (LIVE EXECUTION PIPELINE FLOW) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-4xl mx-auto px-1 shrink-0">
-        {/* Left: Recognized Command Input */}
-        <div className="glass-card rounded-xl p-3 flex flex-col justify-between min-h-[110px] border border-[var(--border-color)]">
-          <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-1 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
-              <Mic className="w-3.5 h-3.5 text-[#F6B511]" /> Recognized Command
-            </span>
-            <span className="text-[10px] font-mono text-[var(--text-muted)]">
-              {state === 'listening' ? 'Listening...' : 'Ready'}
-            </span>
+        {/* 2. CENTER ORB & WAVEFORM */}
+        <div className="flex flex-col items-center justify-center my-auto shrink min-h-0">
+          <div className="scale-85 sm:scale-95 md:scale-105 transition-transform origin-center">
+            <Orb state={state} audioLevel={audioLevel} />
           </div>
 
-          <div className="text-xs text-[var(--text-primary)] font-medium my-1">
-            {transcript ? (
-              <span className="text-white font-semibold">"{transcript}"</span>
-            ) : (
-              <span className="text-[var(--text-muted)] italic">"Say e.g. Shubham ka 2000 rupees ka udhaar likh do"</span>
-            )}
+          <div className="w-52 sm:w-72 h-8 mt-2">
+            <Waveform state={state} audioLevel={audioLevel} />
           </div>
 
-          {lastResult?.message && (
-            <div className="mt-auto pt-1 border-t border-[var(--border-color)] text-[11px] flex items-center gap-1.5 text-emerald-400">
-              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{lastResult.message}</span>
+          <div className="text-center mt-2">
+            <h3 className="text-lg sm:text-xl font-black tracking-tight text-[var(--text-primary)]">
+              {getStateTitle()}
+            </h3>
+            <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)] max-w-md mt-0.5 line-clamp-1">
+              {statusSubtitle}
+            </p>
+          </div>
+        </div>
+
+        {/* 3. YOUTUBE-STYLE LIVE FLOATING TRANSCRIPT & CAPTIONS (NO BOX/CARD) */}
+        <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center min-h-[72px] px-4 my-auto shrink-0">
+          {speakingWords.length > 0 ? (
+            /* AI Spoken Output (Karaoke Highlight like YouTube CC) */
+            <div className="flex flex-wrap gap-2 items-center justify-center text-center px-5 py-2.5 rounded-2xl bg-black/80 dark:bg-black/90 backdrop-blur-md border border-white/10 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+              <span className="text-[10px] uppercase font-black tracking-wider text-[#FFD026] flex items-center gap-1 mr-1">
+                <Volume2 className="w-3.5 h-3.5" /> DukaanAI
+              </span>
+              {speakingWords.map((word, idx) => {
+                const isCurrent = idx === currentWordIndex;
+                const isPast = idx < currentWordIndex;
+                return (
+                  <span
+                    key={idx}
+                    className={`transition-all duration-150 inline-block px-1 rounded text-sm sm:text-base font-bold ${
+                      isCurrent
+                        ? 'text-[#FFD026] scale-110 drop-shadow-[0_0_14px_rgba(255,208,38,0.95)] font-black'
+                        : isPast
+                        ? 'text-white/40 line-through opacity-60'
+                        : 'text-white/95'
+                    }`}
+                  >
+                    {word}
+                  </span>
+                );
+              })}
+            </div>
+          ) : lastResult?.message ? (
+            /* Confirmed Transaction / Result Caption */
+            <div className="flex items-center justify-center gap-2.5 px-5 py-2.5 rounded-2xl bg-black/80 dark:bg-black/90 backdrop-blur-md border border-white/10 text-emerald-400 font-bold text-xs sm:text-sm shadow-xl animate-in fade-in duration-200">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{lastResult.message}</span>
+              {lastResult.audioUrl && (
+                <button
+                  type="button"
+                  onClick={() => playSpeechWithWordHighlight(lastResult.audioUrl!, lastResult.message!)}
+                  className="p-1 rounded-full bg-white/10 hover:bg-white/20 text-white cursor-pointer ml-1 transition-transform active:scale-95"
+                  title="Listen again"
+                >
+                  <Volume2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : isRecording ? (
+            /* Live User Speaking Caption */
+            <div className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-black/75 dark:bg-black/85 backdrop-blur-md border border-rose-500/30 text-rose-400 font-semibold text-xs sm:text-sm shadow-lg animate-pulse">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
+              <span>{transcript ? `"${transcript}"` : 'Listening... (बोलिए...)'}</span>
+            </div>
+          ) : transcript ? (
+            /* Last Recognized Command Caption */
+            <div className="flex items-center justify-center gap-2 px-5 py-2 rounded-2xl bg-black/60 dark:bg-black/80 backdrop-blur-md border border-white/10 text-white/90 font-medium text-xs sm:text-sm shadow-md">
+              <Mic className="w-3.5 h-3.5 text-[#FFD026] shrink-0" />
+              <span>"{transcript}"</span>
+            </div>
+          ) : (
+            <div className="text-[11px] font-medium text-[var(--text-muted)] italic text-center">
+              "Shubham ka ₹2000 udhaar likho" ya "Ramesh ka udhaar clear ho gaya"
             </div>
           )}
         </div>
 
-        {/* Right: Live Execution Pipeline Flow (Visualizing each step, data flow, and DB status) */}
-        <div className="glass-card rounded-xl p-3 flex flex-col justify-between min-h-[110px] border border-[var(--border-color)]">
-          <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-1 mb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-primary)] flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-[#F6B511]" /> Execution Pipeline Flow
+        {/* 4. BOTTOM CONTROL BAR (Mic + Input) */}
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 px-4 pb-3 shrink-0 max-w-2xl mx-auto w-full">
+          {/* Big Mic Button */}
+          <div className="flex items-center gap-3 px-4 py-2 rounded-full glass-panel-elevated shadow-lg border border-[var(--border-color)]">
+            <button
+              type="button"
+              onClick={isRecording ? stopListeningAndProcess : startListening}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
+                isRecording
+                  ? 'bg-rose-600 text-white animate-pulse scale-105'
+                  : 'bg-[#FFD026] text-black hover:scale-105 border border-[#E6B800] shadow-sm'
+              }`}
+              title={isRecording ? 'Stop Recording' : 'Start Recording'}
+            >
+              {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-5 h-5 font-black" />}
+            </button>
+            <span className="font-mono text-xs font-bold text-[var(--text-secondary)] w-11 text-center">
+              {formatTimer(recordDuration)}
             </span>
-            {lastResult?.amount && (
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
-                Flow: {lastResult.amount}
-              </span>
+          </div>
+
+          {/* Manual Text Command Box */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              executeCommand(textInput);
+            }}
+            className="flex-1 max-w-md w-full flex items-center gap-2 bg-white dark:bg-[#1A1B20] border border-[var(--border-color)] rounded-full px-4 py-2 shadow-sm"
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Type command e.g. Shubham ka 2000 udhaar..."
+              className="flex-1 bg-transparent text-xs text-[var(--text-primary)] placeholder-[#A1A1AA] focus:outline-none font-medium"
+            />
+            <button
+              type="submit"
+              disabled={!textInput.trim() || state === 'thinking' || state === 'executing'}
+              className="p-2 rounded-full bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black disabled:opacity-30 cursor-pointer transition-all shadow-xs"
+              title="Execute Command"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </form>
+        </div>
+      </div>
+
+      {/* 5. SQUARE EDGE TOGGLE BUTTON (DOCKS ON RIGHT EDGE, FACING LEFT) */}
+      <button
+        type="button"
+        onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+        className={`fixed top-1/2 -translate-y-1/2 z-40 w-10 h-11 rounded-l-xl bg-[#FFD026] hover:bg-[#F6B511] text-black shadow-2xl flex items-center justify-center border-y-2 border-l-2 border-[#E6B800] transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 ${
+          isHistoryOpen ? 'right-80 sm:right-96' : 'right-0'
+        }`}
+        title={isHistoryOpen ? 'Close Voice History' : 'Open Voice History'}
+      >
+        {isHistoryOpen ? (
+          <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+        ) : (
+          <History className="w-5 h-5 stroke-[2.5]" />
+        )}
+      </button>
+
+      {/* 6. SLIDING RIGHT SIDEBAR: VOICE HISTORY */}
+      <aside
+        className={`fixed top-16 bottom-0 right-0 z-30 w-80 sm:w-96 bg-white/95 dark:bg-[#16171D]/95 backdrop-blur-2xl border-l border-[var(--border-color)] shadow-2xl flex flex-col p-4 transition-transform duration-300 ease-in-out ${
+          isHistoryOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        {/* Sidebar Header */}
+        <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3 mb-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-[#FFD026] text-black font-black">
+              <History className="w-4 h-4" />
+            </div>
+            <h3 className="text-sm font-black tracking-tight text-[var(--text-primary)]">
+              Voice History
+            </h3>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[var(--text-muted)]">
+              {history.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {history.length > 0 && (
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="px-2 py-1 text-[11px] font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-500/10 rounded-md transition-colors flex items-center gap-1 cursor-pointer"
+                title="Clear all saved voice history"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Clear
+              </button>
             )}
+            <button
+              type="button"
+              onClick={() => setIsHistoryOpen(false)}
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              title="Close sidebar"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
+        </div>
 
-          {/* 4 Pipeline Flow Steps */}
-          <div className="space-y-1 my-1">
-            {pipelineSteps.map((step, idx) => (
-              <div key={idx} className="flex items-center justify-between text-[11px]">
-                <div className="flex items-center gap-1.5 truncate">
-                  <div className="w-3.5 h-3.5 rounded-full flex items-center justify-center shrink-0">
-                    {step.status === 'success' ? (
-                      <Check className="w-3 h-3 text-emerald-400" />
-                    ) : step.status === 'active' ? (
-                      <RefreshCw className="w-3 h-3 text-[#F6B511] animate-spin" />
-                    ) : step.status === 'error' ? (
-                      <AlertCircle className="w-3 h-3 text-rose-400" />
-                    ) : (
-                      <span className="w-1.5 h-1.5 rounded-full bg-neutral-600" />
-                    )}
-                  </div>
-                  <span
-                    className={`font-semibold ${
-                      step.status === 'success'
-                        ? 'text-[var(--text-primary)]'
-                        : step.status === 'active'
-                        ? 'text-[#F6B511]'
-                        : 'text-[var(--text-muted)]'
-                    }`}
-                  >
-                    {step.name}
+        {/* Scrollable History Cards */}
+        <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 scrollbar-thin min-h-0">
+          {history.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-center p-4 text-[var(--text-muted)]">
+              <Clock className="w-8 h-8 stroke-1 mb-2 opacity-40" />
+              <p className="text-xs font-semibold">No voice history yet</p>
+              <p className="text-[10px] mt-0.5 opacity-75">
+                Every spoken command and ledger update is saved here automatically.
+              </p>
+            </div>
+          ) : (
+            history.map((item) => (
+              <div
+                key={item.id}
+                className="p-3 rounded-xl bg-black/3 dark:bg-white/5 border border-[var(--border-color)] hover:border-[#FFD026] transition-all flex flex-col gap-1.5 text-xs shadow-xs"
+              >
+                <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] font-mono">
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
+                  {item.amount && (
+                    <span className="text-rose-600 dark:text-rose-400 font-extrabold px-1.5 py-0.5 rounded bg-rose-500/10">
+                      {item.amount}
+                    </span>
+                  )}
                 </div>
-                <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[170px] text-right font-mono">
-                  {step.detail}
-                </span>
+
+                <div className="font-bold text-[var(--text-primary)] flex items-start gap-1.5">
+                  <Mic className="w-3.5 h-3.5 text-[#FFD026] mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">"{item.command}"</span>
+                </div>
+
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium flex items-center justify-between pt-1.5 border-t border-[var(--border-color)]/60">
+                  <span className="line-clamp-1">{item.responseMessage}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (item.audioUrl) {
+                        playSpeechWithWordHighlight(item.audioUrl, item.responseMessage);
+                      } else {
+                        handleGenerateCustomAudio(item.responseMessage);
+                      }
+                    }}
+                    className="p-1 rounded bg-[#FFD026] text-black hover:bg-[#F6B511] cursor-pointer shrink-0 ml-1.5 transition-transform active:scale-95 shadow-xs"
+                    title="Replay Audio"
+                  >
+                    <Volume2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            ))}
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* 6. AI AUDIO GENERATOR MODAL */}
+      {showAudioGenModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-3xl glass-panel-elevated p-6 space-y-4 border border-[var(--border-color)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-base border border-[#E6B800] shadow-xs">
+                  द
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-[var(--text-primary)]">AI Audio Generator</h3>
+                  <p className="text-[11px] font-medium text-[var(--text-muted)]">Audio matches whichever language you input</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAudioGenModal(false)}
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Quick Language Presets */}
+            <div>
+              <span className="text-[11px] font-bold text-[var(--text-muted)] block mb-1.5 uppercase tracking-wider">
+                Quick Language Presets (क्लिक करके टेस्ट करें):
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { label: '🇮🇳 Hindi', text: 'रमेश के खाते में ₹500 का उधार दर्ज कर दिया गया है।' },
+                  { label: '🇮🇳 Odia', text: 'ରମେଶଙ୍କ ଖାତାରେ ₹୫୦୦ ଉଧାର ଯୋଡ଼ାଗଲା।' },
+                  { label: '🇮🇳 Hinglish', text: 'Ramesh ke khate mein ₹500 ka udhaar likh diya gaya hai.' },
+                  { label: '🇬🇧 English', text: 'Credit of Rs 500 recorded for Ramesh.' },
+                  { label: '🇮🇳 Punjabi', text: 'ਰਮੇਸ਼ ਦੇ ਖਾਤੇ ਵਿੱਚ ₹500 ਦਾ ਉਧਾਰ ਦਰਜ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ।' },
+                  { label: '🇮🇳 Bengali', text: 'রমেশের খাতায় ₹৫০০ বাকি জমা করা হয়েছে।' },
+                  { label: '🇮🇳 Gujarati', text: 'રમેશના ખાતામાં ₹500 નું ઉધાર લખાઈ ગયું છે.' },
+                ].map((preset, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setGenTextInput(preset.text);
+                      handleGenerateCustomAudio(preset.text);
+                    }}
+                    className="px-2.5 py-1 rounded-full text-xs bg-black/5 dark:bg-white/5 hover:bg-[#FFD026] hover:text-black border border-[var(--border-color)] text-[var(--text-primary)] font-semibold transition-all cursor-pointer shadow-xs"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Text Input Area */}
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-primary)] mb-1">
+                Enter Text to Generate Speech (किसी भी भाषा में लिखें):
+              </label>
+              <textarea
+                rows={3}
+                value={genTextInput}
+                onChange={(e) => setGenTextInput(e.target.value)}
+                placeholder="Type in Hindi, Odia, English, Hinglish, Bengali, Punjabi..."
+                className="w-full p-3 rounded-2xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026] font-medium resize-none"
+              />
+            </div>
+
+            {genAudioError && (
+              <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 font-semibold">
+                {genAudioError}
+              </div>
+            )}
+
+            {/* Actions & Player */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[var(--border-color)]">
+              {genAudioUrl ? (
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <audio controls src={genAudioUrl} className="h-8 max-w-[260px]" autoPlay />
+                </div>
+              ) : (
+                <span className="text-[11px] text-[var(--text-muted)] italic">
+                  Press Generate to synthesize speech
+                </span>
+              )}
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowAudioGenModal(false)}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={isGeneratingAudio || !genTextInput.trim()}
+                  onClick={() => handleGenerateCustomAudio(genTextInput)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  {isGeneratingAudio ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Synthesizing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-3.5 h-3.5 text-[#FFD026] dark:text-black" />
+                      <span>Generate Audio</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* 4. QUICK CLICKABLE PROMPTS (Including Shubham ka 2000 rupees ka udhaar) */}
-      <div className="flex items-center justify-center gap-1.5 flex-wrap px-1 shrink-0">
-        <span className="text-[11px] text-[var(--text-muted)] font-semibold mr-1">Quick click:</span>
-        {SAMPLE_COMMANDS.map((cmd, idx) => (
-          <button
-            key={idx}
-            type="button"
-            onClick={() => executeCommand(cmd)}
-            className="px-2.5 py-1 rounded-full text-[11px] bg-neutral-900/80 hover:bg-[#F6B511] hover:text-[#09090B] border border-neutral-700 text-[#F4F4F5] transition-all cursor-pointer font-medium shadow-sm hover:scale-102"
-            title="Click to execute this command directly"
-          >
-            {cmd}
-          </button>
-        ))}
-      </div>
-
-      {/* 5. BOTTOM CONTROL BAR (Mic + Input) */}
-      <div className="flex flex-col sm:flex-row items-center justify-center gap-2 px-2 shrink-0 max-w-4xl mx-auto w-full">
-        {/* Big Mic Button */}
-        <div className="flex items-center gap-3 px-4 py-1.5 rounded-full glass-panel-elevated shadow-lg border border-neutral-700">
-          <button
-            type="button"
-            onClick={isRecording ? stopListeningAndProcess : startListening}
-            className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
-              isRecording
-                ? 'bg-red-600 text-white animate-pulse scale-105 shadow-[0_0_15px_rgba(239,68,68,0.5)]'
-                : 'bg-[#F6B511] text-[#09090B] hover:bg-[#FFD04A] hover:scale-105 shadow-[0_0_15px_rgba(246,181,17,0.3)]'
-            }`}
-            title={isRecording ? 'Stop Recording' : 'Start Recording'}
-          >
-            {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-5 h-5 font-bold" />}
-          </button>
-          <span className="font-mono text-xs font-bold text-[var(--text-secondary)] w-11 text-center">
-            {formatTimer(recordDuration)}
-          </span>
-        </div>
-
-        {/* Manual Text Command Box */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            executeCommand(textInput);
-          }}
-          className="flex-1 max-w-md w-full flex items-center gap-1.5 bg-neutral-900/90 border border-neutral-700 rounded-full px-3 py-1.5 shadow-md"
-        >
-          <input
-            type="text"
-            value={textInput}
-            onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Type voice command e.g. Shubham ka 2000 udhaar..."
-            className="flex-1 bg-transparent text-xs text-[#F4F4F5] placeholder-[#71717A] focus:outline-none"
-          />
-          <button
-            type="submit"
-            disabled={!textInput.trim() || state === 'thinking' || state === 'executing'}
-            className="p-1.5 rounded-full bg-[#F6B511] hover:bg-[#FFD04A] text-[#09090B] disabled:opacity-30 cursor-pointer transition-all"
-            title="Execute Command"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
-        </form>
-      </div>
+      )}
     </div>
   );
 };

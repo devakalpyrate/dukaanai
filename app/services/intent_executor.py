@@ -1,5 +1,9 @@
 from decimal import Decimal
 from typing import Any, Dict, Optional
+from app.queries import customer as customer_queries
+from app.queries import notification as notification_queries
+from app.queries import shops as shop_queries
+from app.queries import transaction as transaction_queries
 from app.services.business_logic import (
     AmbiguousEntityError,
     BusinessLogicError,
@@ -13,6 +17,7 @@ from app.services.business_logic import (
     TransactionService,
 )
 from app.services.validators import NegativeContradictionError, ValidationError
+from app.services.language_detection import detect_language, get_localized_confirmation
 
 class ExecutionResult:
     def __init__(
@@ -27,6 +32,8 @@ class ExecutionResult:
         original_text: str = "",
         normalized_text: str = "",
         normalization_notes: Optional[Dict[str, Any]] = None,
+        spoken_message: Optional[str] = None,
+        detected_language: Optional[str] = None,
     ):
         self.success = success
         self.action = action
@@ -38,6 +45,8 @@ class ExecutionResult:
         self.original_text = original_text
         self.normalized_text = normalized_text
         self.normalization_notes = normalization_notes or {}
+        self.spoken_message = spoken_message or message
+        self.detected_language = detected_language or "en"
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +54,8 @@ class ExecutionResult:
             "action": self.action,
             "result": self.result,
             "message": self.message,
+            "spoken_message": self.spoken_message,
+            "detected_language": self.detected_language,
             "clarification_needed": self.clarification_needed,
             "clarification_question": self.clarification_question,
             "requires_confirmation": self.requires_confirmation,
@@ -142,11 +153,105 @@ class IntentExecutor:
 
                     status_note = "replayed existing" if tx.get("is_duplicate_replay") else "recorded"
                     created_prefix = f"New customer '{resolved_cust['name']}' created. " if was_created else ""
+                    lang = detect_language(orig_text or norm_text)
+                    spoken_msg = get_localized_confirmation(
+                        action=action,
+                        customer=resolved_cust['name'],
+                        amount=tx['amount'],
+                        lang=lang,
+                        was_created=was_created
+                    )
+                    try:
+                        sh_data = shop_queries.get_shop_by_id(shop_id)
+                        ow_id = sh_data["owner_id"] if sh_data else 1
+                        n_title = f"नया उधार / Credit: {resolved_cust['name']}" if t_type == "credit" else f"भुगतान प्राप्त / Payment: {resolved_cust['name']}"
+                        n_msg = f"{t_type.capitalize()} of Rs {tx['amount']} recorded for {resolved_cust['name']}."
+                        notification_queries.create_notification(
+                            shop_id=shop_id,
+                            user_id=ow_id,
+                            title=n_title,
+                            message=n_msg,
+                            notification_type=t_type,
+                        )
+                    except Exception:
+                        pass
                     return ExecutionResult(
                         success=True,
                         action=action,
                         result=tx,
                         message=f"{created_prefix}{t_type.capitalize()} of Rs {tx['amount']} {status_note} for {resolved_cust['name']}.",
+                        spoken_message=spoken_msg,
+                        detected_language=lang,
+                        original_text=orig_text,
+                        normalized_text=norm_text,
+                        normalization_notes=norm_meta,
+                    )
+                elif action == "clear_debt":
+                    cust_name = params.get("customer_name") or entities.get("customer")
+                    if not cust_name:
+                        return ExecutionResult(
+                            success=True,
+                            action=action,
+                            clarification_needed=True,
+                            clarification_question="Kripya grahak ka naam batayein jiska udhar clear karna hai.",
+                            original_text=orig_text,
+                        )
+                    resolved_cust = CustomerService.resolve_customer(shop_id=shop_id, name_or_phone=cust_name)
+                    cust_id = resolved_cust["id"]
+                    bal_info = customer_queries.get_customer_balance_in_db(shop_id=shop_id, customer_id=cust_id)
+                    current_balance = float(bal_info["balance"]) if bal_info and bal_info.get("balance") is not None else 0.0
+                    lang = detect_language(orig_text or norm_text)
+                    if current_balance <= 0:
+                        spoken_msg = get_localized_confirmation(
+                            action="already_cleared",
+                            customer=resolved_cust["name"],
+                            amount=0.0,
+                            lang=lang,
+                        )
+                        return ExecutionResult(
+                            success=True,
+                            action=action,
+                            result={"customer": resolved_cust, "balance": 0.0, "cleared_amount": 0.0},
+                            message=f"Customer '{resolved_cust['name']}' has no outstanding balance (Balance: Rs 0.00).",
+                            spoken_message=spoken_msg,
+                            detected_language=lang,
+                            original_text=orig_text,
+                            normalized_text=norm_text,
+                            normalization_notes=norm_meta,
+                        )
+                    tx = TransactionService.record_transaction(
+                        shop_id=shop_id,
+                        customer_id=cust_id,
+                        transaction_type="payment",
+                        amount=current_balance,
+                        description="Full credit clearance / उधार चुकता",
+                        request_id=request_id,
+                    )
+                    spoken_msg = get_localized_confirmation(
+                        action="clear_debt",
+                        customer=resolved_cust["name"],
+                        amount=current_balance,
+                        lang=lang,
+                    )
+                    try:
+                        sh_data = shop_queries.get_shop_by_id(shop_id)
+                        ow_id = sh_data["owner_id"] if sh_data else 1
+                        notification_queries.create_notification(
+                            shop_id=shop_id,
+                            user_id=ow_id,
+                            title=f"उधार चुकता / Debt Cleared: {resolved_cust['name']}",
+                            message=f"Full outstanding balance of Rs {current_balance} cleared for {resolved_cust['name']}.",
+                            notification_type="payment",
+                        )
+                    except Exception:
+                        pass
+                    return ExecutionResult(
+                        success=True,
+                        action=action,
+                        result=tx,
+                        message=f"Outstanding balance of Rs {current_balance} cleared for {resolved_cust['name']}.",
+                        spoken_message=spoken_msg,
+                        detected_language=lang,
                         original_text=orig_text,
                         normalized_text=norm_text,
                         normalization_notes=norm_meta,
@@ -168,11 +273,19 @@ class IntentExecutor:
                         name=c_name,
                         phone=params.get("customer_phone") or entities.get("phone"),
                     )
+                    lang = detect_language(orig_text or norm_text)
+                    spoken_msg = get_localized_confirmation(
+                        action="add_customer",
+                        customer=new_c['name'],
+                        lang=lang
+                    )
                     return ExecutionResult(
                         success=True,
                         action=action,
                         result=new_c,
                         message=f"Customer '{new_c['name']}' added successfully.",
+                        spoken_message=spoken_msg,
+                        detected_language=lang,
                         original_text=orig_text,
                     )
                 elif action == "find_customer":
@@ -206,11 +319,20 @@ class IntentExecutor:
                         price=price,
                         unit=params.get("unit"),
                     )
+                    lang = detect_language(orig_text or norm_text)
+                    spoken_msg = get_localized_confirmation(
+                        action="add_product",
+                        customer=prod['name'],
+                        amount=prod['price'],
+                        lang=lang
+                    )
                     return ExecutionResult(
                         success=True,
                         action=action,
                         result=prod,
                         message=f"Product '{prod['name']}' added at Rs {prod['price']}.",
+                        spoken_message=spoken_msg,
+                        detected_language=lang,
                         original_text=orig_text,
                     )
                 elif action == "update_product_price":

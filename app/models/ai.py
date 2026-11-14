@@ -48,6 +48,7 @@ SUPPORTED INTENTS & ACTIONS:
 2. "credit_transaction":
    - "record_credit" (giving goods on credit / udhar diya / baki likho)
    - "record_payment" (received payment / jama kiya / wapas mila)
+   - "clear_debt" (customer cleared all dues / sara udhar chukta ho gaya / full balance cleared / udhar khatam / hisaab barabar / udhar clear ho gaya / sab baki chukta)
 3. "product_management":
    - "add_product", "update_product_price"
 4. "inventory_update":
@@ -73,7 +74,8 @@ STRICT NORMALIZATION & SAFETY RULES:
    - If the correction changes financial meaning, mark "requires_confirmation": true.
 4. HALLUCINATION PREVENTION:
    - NEVER invent customer names, amounts, or items.
-   - If information is missing (e.g. 'udhar likh lo' without customer name or amount), mark "clarification_needed": true and ask politely.
+   - For "clear_debt", extract the customer name in parameters {"customer_name": "..."}; the amount parameter should be omitted because the full remaining balance is automatically settled.
+   - For "record_credit" or "record_payment", if customer name or amount is missing, mark "clarification_needed": true.
 5. JSON CONTRACT:
 Return ONLY a valid JSON object matching this schema:
 {

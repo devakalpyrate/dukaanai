@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, ArrowLeft, KeyRound, Store, MapPin, Phone, Mail, User } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,10 +16,10 @@ interface KhataEntry {
 
 const KHATA_FEED: KhataEntry[] = [
   { name: 'Ramesh ji', amount: '₹450', action: 'udhaar added', type: 'credit' },
-  { name: 'Sunita', amount: '₹1,200', action: 'reminder sent on WhatsApp', type: 'sent' },
+  { name: 'Sunita', amount: '₹1,200', action: 'reminder sent', type: 'sent' },
   { name: 'Imran bhai', amount: '₹300', action: 'paid, cleared', type: 'cleared' },
   { name: 'Gupta ji', amount: '₹780', action: 'udhaar added', type: 'credit' },
-  { name: 'Meena', amount: '₹95', action: 'reminder sent on WhatsApp', type: 'sent' },
+  { name: 'Meena', amount: '₹95', action: 'reminder sent', type: 'sent' },
 ];
 
 const VOICE_SAYS: string[] = [
@@ -32,12 +32,29 @@ const VOICE_SAYS: string[] = [
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase }) => {
   const [tab, setTab] = useState<'login' | 'reg'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [shopName, setShopName] = useState('');
+  const [regStep, setRegStep] = useState<'form' | 'otp'>('form');
+
+  const [loginMode, setLoginMode] = useState<'mobile' | 'email'>('mobile');
+  const [loginMobile, setLoginMobile] = useState('');
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
+  const [loginOtp, setLoginOtp] = useState('');
+  const [loginOtpSent, setLoginOtpSent] = useState(false);
+  const [loginGeneratedOtp, setLoginGeneratedOtp] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [address, setAddress] = useState('');
+  const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  const [otpInput, setOtpInput] = useState('');
+  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [systemSender, setSystemSender] = useState('dukaanai@india');
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -75,38 +92,167 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
   const pwdMeterColors = ['#E2452D', '#E2452D', '#F6B511', '#2E9A5B', '#2E9A5B'];
   const pwdMeterColor = pwdMeterColors[pwdScore] || '#E2452D';
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendLoginOtp = async () => {
     setErrorMsg('');
-
-    if (tab === 'reg') {
-      if (password.length < 8) {
-        setErrorMsg('Password must be at least 8 characters.');
-        return;
-      }
-      if (password !== confirmPassword) {
-        setErrorMsg('Passwords do not match.');
-        return;
-      }
+    const cleanPhone = loginMobile.trim();
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setErrorMsg('Please enter a valid 10-digit mobile number first.');
+      return;
     }
-
     setLoading(true);
-    const endpoint = tab === 'reg' ? `${apiBase}/api/auth/register` : `${apiBase}/api/auth/login`;
-    const payload =
-      tab === 'reg'
-        ? { name, email, password, shop_name: shopName }
-        : { email, password };
-
     try {
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${apiBase}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ phone: cleanPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error?.message || 'Failed to send verification code.');
+      }
+      const code = data.otp || data.code;
+      setLoginGeneratedOtp(code);
+      setLoginOtp(code);
+      setLoginOtpSent(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to send code.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setLoading(true);
+
+    const identifier = loginMode === 'mobile' ? loginMobile.trim() : loginEmail.trim();
+    if (!identifier) {
+      setErrorMsg(loginMode === 'mobile' ? 'Please enter your mobile number.' : 'Please enter your email address.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier,
+          phone: loginMode === 'mobile' ? identifier : '',
+          email: identifier,
+          password: loginMethod === 'password' ? loginPassword : '',
+          otp: loginMode === 'mobile' && loginMethod === 'otp' ? loginOtp.trim() : null,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        const message = data.error?.message || data.detail || 'Authentication failed';
+        throw new Error(data.error?.message || data.detail || 'Login failed. Invalid mobile/email or password.');
+      }
+
+      localStorage.setItem('dukaanai_token', data.access_token);
+      localStorage.setItem(
+        'dukaanai_user',
+        JSON.stringify({
+          id: data.user_id,
+          name: data.name,
+          email: data.email,
+          phone: data.phone || '',
+          shop_id: data.shop_id,
+          shop_name: data.shop_name,
+          address: data.shop_address || '',
+        })
+      );
+
+      onSuccess(data);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Login failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleInitiateRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    const cleanPhone = phone.trim();
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setErrorMsg('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!shopName.trim()) {
+      setErrorMsg('Shop Name is required.');
+      return;
+    }
+    if (!address.trim()) {
+      setErrorMsg('Shop physical location/address is required.');
+      return;
+    }
+    if (password.length < 8) {
+      setErrorMsg('Password must be at least 8 characters long.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiBase}/api/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error?.message || 'Failed to generate confirmation code.');
+      }
+
+      setGeneratedOtp(data.otp);
+      setSystemSender(data.sent_from || 'dukaanai@india');
+      setRegStep('otp');
+      setOtpInput('');
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error sending confirmation code. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpAndRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+
+    const entered = otpInput.trim();
+    if (!entered || entered.length !== 6) {
+      setErrorMsg('Please enter the 6-digit confirmation code.');
+      return;
+    }
+
+    setLoading(true);
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || firstName.trim() || 'Store Owner';
+
+    try {
+      const res = await fetch(`${apiBase}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: fullName,
+          email: email.trim() || `${phone.trim()}@dukaan.ai`,
+          phone: phone.trim(),
+          shop_name: shopName.trim(),
+          shop_address: address.trim(),
+          password,
+          otp: entered,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const message = data.error?.message || data.detail || 'Registration failed.';
         throw new Error(message);
       }
 
@@ -117,14 +263,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
           id: data.user_id,
           name: data.name,
           email: data.email,
+          phone: data.phone || phone.trim(),
           shop_id: data.shop_id,
           shop_name: data.shop_name,
+          address: data.shop_address || address.trim(),
         })
       );
 
       onSuccess(data);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication error. Please check credentials.');
+      setErrorMsg(err.message || 'Verification failed. Please check the code.');
     } finally {
       setLoading(false);
     }
@@ -181,24 +329,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
       `}</style>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr] h-screen w-screen overflow-hidden">
-        {/* LEFT: FULL-SCREEN SHOP SHOWCASE */}
+        {/* LEFT: FULL-SCREEN SHOP SHOWCASE WITH ANIMATION SYSTEM */}
         <section className="relative hidden lg:flex flex-col justify-between p-8 xl:p-10 bg-[radial-gradient(ellipse_at_48%_68%,#202127_0%,#111114_48%,#09090B_100%)] text-white overflow-hidden border-r border-[#303036]">
           {/* Floating Coins */}
           <div className="absolute inset-0 pointer-events-none">
-            <span className="anim-coin-1 absolute bottom-[-30px] left-[8%] text-2xl font-bold text-[#F6B511]">₹</span>
-            <span className="anim-coin-2 absolute bottom-[-30px] left-[24%] text-2xl font-bold text-[#F6B511]">₹</span>
-            <span className="anim-coin-3 absolute bottom-[-30px] left-[41%] text-2xl font-bold text-[#F6B511]">₹</span>
-            <span className="anim-coin-4 absolute bottom-[-30px] left-[58%] text-2xl font-bold text-[#F6B511]">₹</span>
-            <span className="anim-coin-5 absolute bottom-[-30px] left-[74%] text-2xl font-bold text-[#F6B511]">₹</span>
-            <span className="anim-coin-6 absolute bottom-[-30px] left-[90%] text-2xl font-bold text-[#F6B511]">₹</span>
+            <span className="anim-coin-1 absolute bottom-[-30px] left-[8%] text-2xl font-bold text-[#FFD026]">₹</span>
+            <span className="anim-coin-2 absolute bottom-[-30px] left-[24%] text-2xl font-bold text-[#FFD026]">₹</span>
+            <span className="anim-coin-3 absolute bottom-[-30px] left-[41%] text-2xl font-bold text-[#FFD026]">₹</span>
+            <span className="anim-coin-4 absolute bottom-[-30px] left-[58%] text-2xl font-bold text-[#FFD026]">₹</span>
+            <span className="anim-coin-5 absolute bottom-[-30px] left-[74%] text-2xl font-bold text-[#FFD026]">₹</span>
+            <span className="anim-coin-6 absolute bottom-[-30px] left-[90%] text-2xl font-bold text-[#FFD026]">₹</span>
           </div>
 
           {/* Brand Logo Header */}
           <div className="z-10 flex items-center gap-2.5 font-bold text-2xl">
-            <i className="w-9 h-9 rounded-xl bg-[#F6B511] text-[#09090B] flex items-center justify-center not-italic font-black text-xl shadow-[0_0_15px_rgba(246,181,17,0.4)]">
+            <i className="w-10 h-10 rounded-xl bg-[#FFD026] text-[#09090B] flex items-center justify-center not-italic font-black text-xl shadow-[0_0_15px_rgba(255,208,38,0.4)] border border-[#E6B800]">
               द
             </i>
-            <span className="tracking-tight">Dukaan AI</span>
+            <span className="tracking-tight text-xl font-black">
+              Dukaan<span className="text-[#FFD026]">AI</span>
+            </span>
           </div>
 
           {/* Shop Heading & Subtitle */}
@@ -207,7 +357,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
               India's Voice Copilot for Kirana & Retail.
             </h1>
             <p className="text-sm text-[#C5CAF0] mt-2 leading-relaxed">
-              Record daily customer credits, update inventory, and manage your shop ledger hands-free without typing in English.
+              Record daily customer credits, clear debts, and manage your store ledger hands-free with voice recognition in Indian languages.
             </p>
           </div>
 
@@ -222,7 +372,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
             <div className="absolute right-0 top-[6px] w-[min(300px,52%)] bg-[#FFF8E1] text-[#2A2410] rounded-xl p-3.5 shadow-[0_10px_30px_rgba(0,0,0,0.3)] rotate-1 z-20 border border-[#E9D99F]">
               <div className="flex items-center justify-between font-bold text-sm border-b border-[#D9C88A] pb-1.5 mb-2">
                 <span>Khata Ledger</span>
-                <span className="text-xs text-[#7A6B30]">Live आज</span>
+                <span className="text-xs text-[#7A6B30]">Live Sync</span>
               </div>
               <ul className="space-y-1.5 text-xs">
                 {khataList.map((entry, idx) => (
@@ -244,18 +394,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
               <rect x="0" y="262" width="720" height="38" fill="#0E1744" />
               <rect x="60" y="70" width="400" height="192" rx="6" fill="#26379A" />
               <g>
-                <path d="M50 70h420l-20 50H70z" fill="#F6B511" />
+                <path d="M50 70h420l-20 50H70z" fill="#FFD026" />
                 <path d="M120 70h50l-8 50h-34zM220 70h50l-4 50h-42zM320 70h50l0 50h-42zM420 70h50l-12 50h-38z" fill="#E2452D" />
               </g>
               <rect x="90" y="140" width="150" height="122" fill="#101A57" />
-              <rect x="100" y="150" width="130" height="22" rx="3" fill="#F6B511" opacity=".9" />
+              <rect x="100" y="150" width="130" height="22" rx="3" fill="#FFD026" opacity=".9" />
               <text x="165" y="167" fontSize="14" fontWeight="700" textAnchor="middle" fill="#14205C" fontFamily="sans-serif">
                 DukaanAI
               </text>
               <g fill="#E2452D">
                 <rect x="104" y="184" width="18" height="24" rx="3" />
                 <rect x="126" y="184" width="18" height="24" rx="3" fill="#2E9A5B" />
-                <rect x="148" y="184" width="18" height="24" rx="3" fill="#F6B511" />
+                <rect x="148" y="184" width="18" height="24" rx="3" fill="#FFD026" />
                 <rect x="170" y="184" width="18" height="24" rx="3" />
                 <rect x="192" y="184" width="18" height="24" rx="3" fill="#2E9A5B" />
               </g>
@@ -264,9 +414,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
 
               {/* Voice Agent Hub */}
               <g transform="translate(345 175)">
-                <circle className="anim-ring" r="22" fill="none" stroke="#F6B511" strokeWidth="3" />
-                <circle className="anim-ring-2" r="22" fill="none" stroke="#F6B511" strokeWidth="3" />
-                <circle r="22" fill="#F6B511" />
+                <circle className="anim-ring" r="22" fill="none" stroke="#FFD026" strokeWidth="3" />
+                <circle className="anim-ring-2" r="22" fill="none" stroke="#FFD026" strokeWidth="3" />
+                <circle r="22" fill="#FFD026" />
                 <rect x="-5" y="-12" width="10" height="16" rx="5" fill="#14205C" />
                 <path d="M-10 0a10 10 0 0020 0M0 10v6" stroke="#14205C" strokeWidth="3" fill="none" strokeLinecap="round" />
               </g>
@@ -294,7 +444,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
               <g className="anim-walk-2">
                 <g className="anim-bob">
                   <circle cx="0" cy="218" r="11" fill="#C98E64" />
-                  <rect x="-10" y="229" width="20" height="31" rx="9" fill="#F6B511" />
+                  <rect x="-10" y="229" width="20" height="31" rx="9" fill="#FFD026" />
                 </g>
               </g>
               <g className="anim-walk-3">
@@ -305,252 +455,515 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
               </g>
             </svg>
           </div>
+
+          <div className="z-10 text-[11px] text-[#A1A1AA] pt-2">
+            DukaanAI Smart Store OS • Ultra-Fast Multilingual Voice Assistant
+          </div>
         </section>
 
-        {/* RIGHT: AUTHENTICATION PANEL */}
-        <main className="flex items-center justify-center p-6 sm:p-10 bg-[#09090B] overflow-y-auto">
-          <div className="w-full max-w-[440px] my-auto">
-            {/* Tabs */}
-            <div className="grid grid-cols-2 p-1 rounded-2xl bg-[#18181B] border border-[#29292F] mb-6 relative">
-              <span
-                className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-[#F6B511] rounded-xl transition-transform duration-250 ${
-                  tab === 'reg' ? 'translate-x-[calc(100%+8px)]' : 'translate-x-1'
-                }`}
-              />
+        {/* RIGHT: AUTH FORM CONTAINER (100% ENGLISH) */}
+        <main className="flex flex-col justify-center px-6 sm:px-12 xl:px-16 py-8 overflow-y-auto custom-scrollbar bg-[#09090B]">
+          <div className="w-full max-w-md mx-auto">
+            {/* Header Tabs */}
+            <div className="flex bg-[#1E1F26] p-1 rounded-xl mb-6 border border-[#2E3038]">
               <button
                 type="button"
                 onClick={() => {
                   setTab('login');
                   setErrorMsg('');
                 }}
-                className={`py-2.5 text-base font-semibold z-10 transition-colors cursor-pointer ${
-                  tab === 'login' ? 'text-[#17130A] font-bold' : 'text-[#A1A1AA] hover:text-white'
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  tab === 'login'
+                    ? 'bg-[#2B2C36] text-white shadow-xs'
+                    : 'text-[#A1A1AA] hover:text-white'
                 }`}
               >
-                Login
+                Log In
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setTab('reg');
+                  setRegStep('form');
                   setErrorMsg('');
                 }}
-                className={`py-2.5 text-base font-semibold z-10 transition-colors cursor-pointer ${
-                  tab === 'reg' ? 'text-[#17130A] font-bold' : 'text-[#A1A1AA] hover:text-white'
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  tab === 'reg'
+                    ? 'bg-[#FFD026] text-black shadow-xs'
+                    : 'text-[#A1A1AA] hover:text-white'
                 }`}
               >
-                Register shop
+                Register Store
               </button>
             </div>
 
-            {/* Error Message */}
             {errorMsg && (
-              <div className="p-3 mb-4 rounded-xl bg-red-950/60 border border-red-800 text-red-200 text-xs">
+              <div className="p-3 mb-4 text-xs rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 font-medium">
                 {errorMsg}
               </div>
             )}
 
-            {/* Login Form */}
-            {tab === 'login' ? (
-              <form onSubmit={handleSubmit} className="space-y-4">
+            {/* TAB 1: LOGIN FORM */}
+            {tab === 'login' && (
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-white mb-1">Welcome back</h2>
-                  <p className="text-sm text-[#A1A1AA]">Log in to see today’s udhaar and reminders.</p>
+                  <h2 className="text-xl font-black text-white tracking-tight">Welcome Back</h2>
+                  <p className="text-xs text-[#A1A1AA] mt-0.5">
+                    Sign in to your DukaanAI store with your Mobile Number or Email.
+                  </p>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@shop.com"
-                    className="w-full px-3.5 py-2.5 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
-                  />
+                {/* Sub-tabs: Mobile Number vs Email */}
+                <div className="flex bg-[#121316] p-1 rounded-xl border border-[#2E3038] gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode('mobile');
+                      setErrorMsg('');
+                    }}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      loginMode === 'mobile'
+                        ? 'bg-[#FFD026] text-black shadow-xs'
+                        : 'text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    <Phone className="w-3.5 h-3.5" /> Mobile Number
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginMode('email');
+                      setErrorMsg('');
+                    }}
+                    className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                      loginMode === 'email'
+                        ? 'bg-[#FFD026] text-black shadow-xs'
+                        : 'text-[#A1A1AA] hover:text-white'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Email Address
+                  </button>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Your password"
-                      className="w-full pl-3.5 pr-11 py-2.5 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#A1A1AA] hover:text-white px-2 py-1"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                {/* Field: Mobile Input or Email Input */}
+                {loginMode === 'mobile' ? (
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Mobile Number (मोबाइल नंबर)
+                    </label>
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3 font-semibold text-xs text-[#FFD026] bg-[#2E3038]/70 px-1.5 py-0.5 rounded border border-[#3E404D]">
+                        🇮🇳 +91
+                      </span>
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        value={loginMobile}
+                        onChange={(e) => setLoginMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        placeholder="98765 43210"
+                        className="w-full pl-20 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026] font-mono tracking-wider"
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Email Address (ईमेल पता)
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
+                      <input
+                        type="email"
+                        required
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        placeholder="store@dukaan.ai"
+                        className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
+                    </div>
+                  </div>
+                )}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 rounded-xl bg-[#F6B511] hover:bg-[#FFD04A] text-[#17130A] font-bold text-base tracking-wide transition-all cursor-pointer disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(246,181,17,0.3)]"
-                >
-                  {loading ? 'Logging in...' : 'Log in'}
-                </button>
-
-                <div className="flex justify-between items-center text-xs text-[#A1A1AA] pt-1">
-                  <span>
-                    New shop?{' '}
+                {/* Quick Toggle for Mobile: Password vs Instant OTP */}
+                {loginMode === 'mobile' && (
+                  <div className="flex items-center justify-between text-[11px] pt-0.5">
+                    <span className="text-[#A1A1AA]">Login verification:</span>
                     <button
                       type="button"
                       onClick={() => {
-                        setTab('reg');
+                        setLoginMethod(loginMethod === 'password' ? 'otp' : 'password');
                         setErrorMsg('');
                       }}
-                      className="text-[#F6B511] font-semibold underline cursor-pointer"
+                      className="text-[#FFD026] font-bold hover:underline cursor-pointer"
                     >
-                      Register
+                      {loginMethod === 'password' ? 'Switch to OTP Login' : 'Switch to Password Login'}
                     </button>
-                  </span>
-                </div>
+                  </div>
+                )}
 
-                <div className="flex items-center gap-2.5 p-3 rounded-xl border border-dashed border-[#303036] text-[#A1A1AA] text-xs mt-3">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-[#F6B511]">
-                    <rect x="9" y="3" width="6" height="11" rx="3" />
-                    <path d="M5 11a7 7 0 0014 0M12 18v3" />
-                  </svg>
-                  <span>
-                    <b className="text-[#F4F4F5]">Voice agent</b> starts after login. Just say <em>“Sunita ka udhaar kitna hai?”</em>
-                  </span>
+                {/* Password Input (shown when email mode or mobile password method) */}
+                {(loginMode === 'email' || loginMethod === 'password') && (
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        placeholder="Enter your account password"
+                        className="w-full pl-3.5 pr-10 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Mobile OTP Section */}
+                {loginMode === 'mobile' && loginMethod === 'otp' && (
+                  <div className="space-y-3 pt-1">
+                    {!loginOtpSent ? (
+                      <button
+                        type="button"
+                        onClick={handleSendLoginOtp}
+                        disabled={loading || loginMobile.length < 10}
+                        className="w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[#FFD026] font-bold text-xs uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        {loading ? 'Sending Code...' : 'Get 6-Digit Login Code'}
+                      </button>
+                    ) : (
+                      <div className="space-y-3">
+                        {loginGeneratedOtp && (
+                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-amber-300">Your Login Code:</span>
+                            <div className="text-xl font-mono font-black text-[#FFD026] tracking-widest select-all">
+                              {loginGeneratedOtp}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider mb-1">
+                            Enter 6-Digit Code
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            maxLength={6}
+                            value={loginOtp}
+                            onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
+                            placeholder="Enter 6-digit code"
+                            className="w-full text-center tracking-[0.3em] font-mono text-base py-2.5 rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                          />
+                        </div>
+                        <div className="text-right">
+                          <button
+                            type="button"
+                            onClick={handleSendLoginOtp}
+                            className="text-[11px] text-[#A1A1AA] hover:text-[#FFD026] cursor-pointer underline"
+                          >
+                            Resend Code
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    (loginMode === 'mobile' && loginMobile.length < 10) ||
+                    (loginMode === 'email' && !loginEmail) ||
+                    (loginMode === 'mobile' && loginMethod === 'otp' && (!loginOtpSent || loginOtp.length !== 6))
+                  }
+                  className="w-full py-2.5 rounded-xl bg-[#FFD026] hover:bg-[#F6B511] text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50 mt-2"
+                >
+                  {loading
+                    ? 'Signing in...'
+                    : loginMode === 'mobile'
+                    ? loginMethod === 'otp'
+                      ? 'Verify Code & Sign In'
+                      : 'Sign In with Mobile'
+                    : 'Sign In with Email'}
+                </button>
+
+                <div className="text-center pt-2 text-xs text-[#A1A1AA]">
+                  Don't have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab('reg');
+                      setRegStep('form');
+                      setErrorMsg('');
+                    }}
+                    className="text-[#FFD026] font-bold hover:underline cursor-pointer"
+                  >
+                    Register your store
+                  </button>
                 </div>
               </form>
-            ) : (
-              /* Register Form */
-              <form onSubmit={handleSubmit} className="space-y-3.5">
+            )}
+
+            {/* TAB 2: REGISTER STORE FORM */}
+            {tab === 'reg' && regStep === 'form' && (
+              <form onSubmit={handleInitiateRegister} className="space-y-3.5">
                 <div>
-                  <h2 className="text-2xl font-bold tracking-tight text-white mb-1">Set up your shop</h2>
-                  <p className="text-sm text-[#A1A1AA]">Register your dukaan and start hands-free voice logging.</p>
+                  <h2 className="text-xl font-black text-white tracking-tight">Register Your Store</h2>
+                  <p className="text-xs text-[#A1A1AA] mt-0.5">
+                    Fill in your store details. Mobile number is required.
+                  </p>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Shop name</label>
-                  <input
-                    type="text"
-                    required
-                    value={shopName}
-                    onChange={(e) => setShopName(e.target.value)}
-                    placeholder="Sharma Kirana Store"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Your name</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Rajesh Sharma"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
+                {/* Name Row */}
+                <div className="grid grid-cols-2 gap-2.5">
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-[#F4F4F5]">Email</label>
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      First Name
+                    </label>
                     <input
-                      type="email"
+                      type="text"
                       required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@shop.com"
-                      className="w-full px-3 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      placeholder="e.g. Ramesh"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="block text-xs font-semibold text-[#F4F4F5]">Phone number</label>
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Last Name
+                    </label>
                     <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="98765 43210"
-                      className="w-full px-3 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
+                      type="text"
+                      required
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      placeholder="e.g. Kumar"
+                      className="w-full px-3 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Set password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="At least 8 characters"
-                      className="w-full pl-3.5 pr-11 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#A1A1AA] hover:text-white px-2 py-1"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  {password && (
-                    <div className="h-1.5 w-full bg-[#303036] rounded-full overflow-hidden mt-1.5">
-                      <div className="h-full transition-all duration-250" style={{ width: pwdMeterWidth, backgroundColor: pwdMeterColor }} />
+                {/* Contact Row */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider flex items-center justify-between">
+                      <span>Mobile Number</span>
+                      <span className="text-[10px] text-amber-500 font-bold">*Required</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A1A1AA]" />
+                      <input
+                        type="tel"
+                        required
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="10-digit number"
+                        className="w-full pl-8 pr-2.5 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
                     </div>
-                  )}
+                  </div>
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A1A1AA]" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="store@dukaan.ai"
+                        className="w-full pl-8 pr-2.5 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Store Name & Address */}
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider flex items-center justify-between">
+                    <span>Shop / Store Name</span>
+                    <span className="text-[10px] text-amber-500 font-bold">*Required</span>
+                  </label>
+                  <div className="relative">
+                    <Store className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#A1A1AA]" />
+                    <input
+                      type="text"
+                      required
+                      value={shopName}
+                      onChange={(e) => setShopName(e.target.value)}
+                      placeholder="e.g. Mahabir Kirana & General Store"
+                      className="w-full pl-8 pr-3 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-[#F4F4F5]">Confirm password</label>
+                  <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider flex items-center justify-between">
+                    <span>Shop Physical Address</span>
+                    <span className="text-[10px] text-amber-500 font-bold">*Required</span>
+                  </label>
                   <div className="relative">
-                    <input
-                      type={showConfirmPassword ? 'text' : 'password'}
+                    <MapPin className="absolute left-3 top-2.5 w-3.5 h-3.5 text-[#A1A1AA]" />
+                    <textarea
                       required
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Type it again"
-                      className="w-full pl-3.5 pr-11 py-2 text-sm rounded-xl bg-[#1C1C20] border border-[#303036] text-[#F4F4F5] placeholder-[#71717A] focus:outline-none focus:border-[#F6B511] focus:ring-1 focus:ring-[#F6B511]"
+                      rows={2}
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      placeholder="e.g. Shop No. 12, Main Market Road, Bhubaneswar, Odisha"
+                      className="w-full pl-8 pr-3 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026] resize-none"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#A1A1AA] hover:text-white px-2 py-1"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
                   </div>
                 </div>
+
+                {/* Passwords */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Set Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Min 8 characters"
+                        className="w-full pl-3 pr-8 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white cursor-pointer"
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[11px] font-bold text-[#F4F4F5] uppercase tracking-wider">
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Type again"
+                        className="w-full pl-3 pr-8 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white cursor-pointer"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {password && (
+                  <div className="space-y-1">
+                    <div className="h-1.5 w-full bg-[#2E3038] rounded-full overflow-hidden">
+                      <div className="h-full transition-all duration-200" style={{ width: pwdMeterWidth, backgroundColor: pwdMeterColor }} />
+                    </div>
+                  </div>
+                )}
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3 rounded-xl bg-[#F6B511] hover:bg-[#FFD04A] text-[#17130A] font-bold text-base tracking-wide transition-all cursor-pointer disabled:opacity-50 mt-1 shadow-[0_0_15px_rgba(246,181,17,0.3)]"
+                  className="w-full py-2.5 rounded-xl bg-[#FFD026] hover:bg-[#F6B511] text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50 mt-2"
                 >
-                  {loading ? 'Creating...' : 'Create my shop'}
+                  {loading ? 'Generating Code...' : 'Continue to Verification'}
                 </button>
 
-                <div className="text-xs text-[#A1A1AA] pt-1 text-center">
-                  <span>
-                    Already registered?{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTab('login');
-                        setErrorMsg('');
-                      }}
-                      className="text-[#F6B511] font-semibold underline cursor-pointer"
-                    >
-                      Log in
-                    </button>
-                  </span>
+                <div className="text-center pt-1 text-xs text-[#A1A1AA]">
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab('login');
+                      setErrorMsg('');
+                    }}
+                    className="text-[#FFD026] font-bold hover:underline cursor-pointer"
+                  >
+                    Log In
+                  </button>
                 </div>
+              </form>
+            )}
+
+            {/* TAB 2 - STEP 2: OTP CONFIRMATION */}
+            {tab === 'reg' && regStep === 'otp' && (
+              <form onSubmit={handleVerifyOtpAndRegister} className="space-y-4">
+                <button
+                  type="button"
+                  onClick={() => setRegStep('form')}
+                  className="inline-flex items-center gap-1.5 text-xs text-[#A1A1AA] hover:text-white cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to details
+                </button>
+
+                <div>
+                  <h2 className="text-xl font-black text-white tracking-tight">Verify Your Account</h2>
+                  <p className="text-xs text-[#A1A1AA] mt-0.5">
+                    We generated a 6-digit confirmation code for <strong>{phone}</strong>.
+                  </p>
+                </div>
+
+                {/* Display Confirmation Code Banner */}
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                    <span className="flex items-center gap-1">
+                      <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Confirmation Code
+                    </span>
+                    <span className="font-mono text-[10px] text-amber-400">{systemSender}</span>
+                  </div>
+                  <div className="text-2xl font-black tracking-widest text-[#FFD026] font-mono select-all">
+                    {generatedOtp}
+                  </div>
+                  <p className="text-[10px] text-amber-400/80">
+                    Enter this 6-digit code below to activate your store.
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                    Enter 6-Digit Code
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Enter code"
+                    className="w-full text-center tracking-[0.3em] font-mono text-lg py-2.5 rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading || otpInput.length !== 6}
+                  className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50"
+                >
+                  {loading ? 'Verifying...' : 'Verify & Complete Setup'}
+                </button>
               </form>
             )}
           </div>

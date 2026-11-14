@@ -6,9 +6,6 @@ import { OverviewPage } from './pages/OverviewPage';
 import { CustomersPage } from './pages/CustomersPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { SalesPage } from './pages/SalesPage';
-import { SuppliersPage } from './pages/SuppliersPage';
-import { BillingPage } from './pages/BillingPage';
-import { AutomationPage } from './pages/AutomationPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { VoiceAssistantPage } from './pages/VoiceAssistantPage';
@@ -22,9 +19,6 @@ const pagePathMap: Record<PageId, string> = {
   customers: '/customers',
   products: '/products',
   sales: '/sales',
-  suppliers: '/suppliers',
-  billing: '/billing',
-  automation: '/automation',
   reports: '/reports',
   settings: '/settings',
 };
@@ -36,9 +30,6 @@ const pathToPageMap: Record<string, PageId> = {
   '/customers': 'customers',
   '/products': 'products',
   '/sales': 'sales',
-  '/suppliers': 'suppliers',
-  '/billing': 'billing',
-  '/automation': 'automation',
   '/reports': 'reports',
   '/settings': 'settings',
 };
@@ -166,12 +157,6 @@ export const App: React.FC = () => {
         return <ProductsPage />;
       case 'sales':
         return <SalesPage />;
-      case 'suppliers':
-        return <SuppliersPage />;
-      case 'billing':
-        return <BillingPage />;
-      case 'automation':
-        return <AutomationPage />;
       case 'reports':
         return <ReportsPage />;
       case 'settings':
@@ -213,14 +198,16 @@ export const App: React.FC = () => {
             <main
               className={`flex-1 min-w-0 ${
                 currentPage === 'voice-assistant'
-                  ? 'overflow-hidden p-2 md:p-3 flex flex-col min-h-0'
-                  : 'overflow-y-auto p-4 md:p-6 lg:p-8 scrollbar-thin'
+                  ? 'overflow-hidden p-0 flex flex-col min-h-0 relative'
+                  : currentPage === 'customers'
+                  ? 'overflow-hidden p-3 md:p-4 flex flex-col min-h-0 relative'
+                  : 'overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar'
               }`}
             >
               <div
                 className={`w-full ${
-                  currentPage === 'voice-assistant'
-                    ? 'max-w-5xl mx-auto h-full flex flex-col min-h-0'
+                  currentPage === 'voice-assistant' || currentPage === 'customers'
+                    ? 'h-full flex flex-col min-h-0 relative'
                     : 'max-w-7xl mx-auto'
                 }`}
               >

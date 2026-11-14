@@ -61,9 +61,9 @@ export const ProductsPage: React.FC = () => {
 
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white text-black light:bg-neutral-900 light:text-white text-xs font-bold shadow-sm hover:opacity-90 transition-all cursor-pointer"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black text-xs font-bold shadow-sm transition-all cursor-pointer"
         >
-          <Plus className="w-4 h-4" /> Add New Product
+          <Plus className="w-4 h-4 text-[#FFD026] dark:text-black" /> Add New Product
         </button>
       </div>
 
@@ -76,7 +76,7 @@ export const ProductsPage: React.FC = () => {
             placeholder="Search store inventory..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-neutral-900/50 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-white light:focus:border-black"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
           />
         </div>
       </div>
@@ -99,7 +99,7 @@ export const ProductsPage: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-[var(--border-color)]">
                 {filtered.map((prod) => (
-                  <tr key={prod.id} className="hover:bg-neutral-900/40 light:hover:bg-neutral-100 transition-colors">
+                  <tr key={prod.id} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.04] transition-colors">
                     <td className="py-3.5 font-bold text-[var(--text-primary)]">{prod.name}</td>
                     <td className="py-3.5 text-right font-black text-[var(--text-primary)]">
                       ₹{prod.price}
@@ -117,8 +117,8 @@ export const ProductsPage: React.FC = () => {
 
       {/* Add Product Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-2xl glass-panel-elevated p-6 space-y-4 border border-[var(--border-color)] shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl glass-panel-elevated p-6 space-y-4 border border-[var(--border-color)] shadow-2xl">
             <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)]">Add New Product</h3>
               <button onClick={() => setShowAddModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
@@ -135,7 +135,7 @@ export const ProductsPage: React.FC = () => {
                   placeholder="e.g. Parle-G 100g"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-neutral-900/60 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+                  className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                 />
               </div>
 
@@ -147,7 +147,7 @@ export const ProductsPage: React.FC = () => {
                     required
                     value={price || ''}
                     onChange={(e) => setPrice(Number(e.target.value))}
-                    className="w-full p-2.5 rounded-xl bg-neutral-900/60 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
                 <div>
@@ -158,7 +158,7 @@ export const ProductsPage: React.FC = () => {
                     placeholder="packet, kg, pouch"
                     value={unit}
                     onChange={(e) => setUnit(e.target.value)}
-                    className="w-full p-2.5 rounded-xl bg-neutral-900/60 light:bg-neutral-100 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-white light:focus:border-black"
+                    className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                 </div>
               </div>
@@ -167,13 +167,13 @@ export const ProductsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-[var(--text-muted)] hover:bg-white/5 cursor-pointer font-semibold"
+                  className="px-4 py-2 rounded-xl text-[var(--text-muted)] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-white text-black light:bg-neutral-900 light:text-white font-bold cursor-pointer hover:opacity-90 shadow-sm"
+                  className="px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black font-bold cursor-pointer shadow-sm"
                 >
                   Save Product
                 </button>
