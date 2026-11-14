@@ -1,7 +1,7 @@
 import hashlib
 import time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import pymysql
 
 from app.database import db_connection
@@ -81,6 +81,19 @@ class CustomerService:
         )
 
     @staticmethod
+    def resolve_or_create_customer(shop_id: int, name_or_phone: str, phone: Optional[str] = None, auto_create: bool = True) -> Tuple[dict, bool]:
+        ShopVerificationService.verify_shop_exists(shop_id)
+        query_str = validate_string(name_or_phone, "customer_name", max_length=100, required=True)
+        try:
+            resolved = CustomerService.resolve_customer(shop_id, query_str)
+            return resolved, False
+        except EntityNotFoundError:
+            if not auto_create:
+                raise
+            created = CustomerService.add_customer(shop_id, name=query_str, phone=phone)
+            return created, True
+
+    @staticmethod
     def list_customers(shop_id: int) -> list:
         ShopVerificationService.verify_shop_exists(shop_id)
         return customer_queries.get_customers_by_shop(shop_id)
@@ -157,6 +170,19 @@ class ProductService:
         raise AmbiguousEntityError(
             f"Multiple products found matching '{p_name}': {', '.join(names)}. Please clarify which product."
         )
+
+    @staticmethod
+    def resolve_or_create_product(shop_id: int, product_name: str, price: Any = Decimal("0.00"), unit: Optional[str] = "unit", auto_create: bool = True) -> Tuple[dict, bool]:
+        ShopVerificationService.verify_shop_exists(shop_id)
+        p_name = validate_string(product_name, "product_name", max_length=100, required=True)
+        try:
+            resolved = ProductService.resolve_product(shop_id, p_name)
+            return resolved, False
+        except EntityNotFoundError:
+            if not auto_create:
+                raise
+            created = ProductService.add_product(shop_id, name=p_name, price=price, unit=unit)
+            return created, True
 
     @staticmethod
     def list_products(shop_id: int) -> list:

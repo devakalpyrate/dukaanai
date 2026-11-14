@@ -141,50 +141,62 @@ class GroqLLMClient:
 
         messages.append({"role": "user", "content": raw_text})
 
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                temperature=0.1,
-            )
-            raw_content = response.choices[0].message.content or "{}"
-            parsed_json = json.loads(raw_content)
+        max_attempts = 3
+        last_exc = None
+        for attempt in range(max_attempts):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                )
+                raw_content = response.choices[0].message.content or "{}"
+                parsed_json = json.loads(raw_content)
 
-            parsed_json["original_text"] = raw_text
-            if not parsed_json.get("normalized_text"):
-                parsed_json["normalized_text"] = raw_text
+                parsed_json["original_text"] = raw_text
+                if not parsed_json.get("normalized_text"):
+                    parsed_json["normalized_text"] = raw_text
 
-            structured = CanonicalIntentContract.model_validate(parsed_json)
-            if structured.intent not in VALID_INTENTS:
-                structured.intent = "unknown"
+                structured = CanonicalIntentContract.model_validate(parsed_json)
+                if structured.intent not in VALID_INTENTS:
+                    structured.intent = "unknown"
 
-            if shop_id and "shop_id" not in structured.parameters:
-                structured.parameters["shop_id"] = shop_id
+                if shop_id and "shop_id" not in structured.parameters:
+                    structured.parameters["shop_id"] = shop_id
 
-            return structured
+                return structured
 
-        except json.JSONDecodeError as exc:
-            logger.error("Groq returned malformed JSON: %s", exc)
-            return CanonicalIntentContract(
-                intent="unknown",
-                action="parse_error",
-                original_text=raw_text,
-                clarification_needed=True,
-                clarification_question="Command samajh nahi aaya, kripya saaf bolein.",
-            )
-        except ValidationError as exc:
-            logger.error("CanonicalIntentContract schema validation error: %s", exc)
-            return CanonicalIntentContract(
-                intent="unknown",
-                action="validation_error",
-                original_text=raw_text,
-                clarification_needed=True,
-                clarification_question="Adhoori jankari mili, kripya pura sentence bolein.",
-            )
-        except Exception as exc:
-            logger.error("Groq API call error: %s", exc)
-            raise RuntimeError(f"Groq LLM service failure: {exc}") from exc
+            except (json.JSONDecodeError, ValidationError) as parse_exc:
+                logger.error("Groq returned unparseable content: %s", parse_exc)
+                return CanonicalIntentContract(
+                    intent="unknown",
+                    action="parse_error",
+                    original_text=raw_text,
+                    clarification_needed=True,
+                    clarification_question="Command samajh nahi aaya, kripya dobara bolein.",
+                )
+            except Exception as exc:
+                last_exc = exc
+                err_str = str(exc).lower()
+                is_transient = any(w in err_str for w in ["timeout", "timed out", "rate limit", "429", "500", "502", "503", "connection"])
+                if is_transient and attempt < max_attempts - 1:
+                    import random
+                    import time
+                    jitter = random.uniform(0.1, 0.3)
+                    sleep_time = (0.5 * (2 ** attempt)) + jitter
+                    time.sleep(sleep_time)
+                    continue
+                break
+
+        logger.error("Groq API call error: %s", last_exc)
+        return CanonicalIntentContract(
+            intent="unknown",
+            action="service_unavailable",
+            original_text=raw_text,
+            clarification_needed=True,
+            clarification_question="AI service is momentarily busy. Please repeat your instruction.",
+        )
 
 _default_llm_client: Optional[GroqLLMClient] = None
 

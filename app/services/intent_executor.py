@@ -105,11 +105,18 @@ class IntentExecutor:
                             clarification_question="Kripya grahak ka naam batayein.",
                             original_text=orig_text,
                         )
-                    resolved_cust = CustomerService.resolve_customer(shop_id, cust_name)
+                    resolved_cust, was_created = CustomerService.resolve_or_create_customer(
+                        shop_id=shop_id,
+                        name_or_phone=cust_name,
+                        phone=params.get("customer_phone") or entities.get("phone"),
+                        auto_create=True,
+                    )
                     cust_id = resolved_cust["id"]
 
                     amount_val = params.get("amount")
                     if amount_val is None:
+                        if was_created:
+                            CustomerService.delete_customer(shop_id, cust_id, confirmed=True)
                         return ExecutionResult(
                             success=True,
                             action=action,
@@ -119,20 +126,27 @@ class IntentExecutor:
                         )
 
                     t_type = "credit" if action == "record_credit" else "payment"
-                    tx = TransactionService.record_transaction(
-                        shop_id=shop_id,
-                        customer_id=cust_id,
-                        transaction_type=t_type,
-                        amount=amount_val,
-                        description=params.get("description"),
-                        request_id=request_id,
-                    )
+                    try:
+                        tx = TransactionService.record_transaction(
+                            shop_id=shop_id,
+                            customer_id=cust_id,
+                            transaction_type=t_type,
+                            amount=amount_val,
+                            description=params.get("description"),
+                            request_id=request_id,
+                        )
+                    except Exception:
+                        if was_created:
+                            CustomerService.delete_customer(shop_id, cust_id, confirmed=True)
+                        raise
+
                     status_note = "replayed existing" if tx.get("is_duplicate_replay") else "recorded"
+                    created_prefix = f"New customer '{resolved_cust['name']}' created. " if was_created else ""
                     return ExecutionResult(
                         success=True,
                         action=action,
                         result=tx,
-                        message=f"{t_type.capitalize()} of Rs {tx['amount']} {status_note} for {resolved_cust['name']}.",
+                        message=f"{created_prefix}{t_type.capitalize()} of Rs {tx['amount']} {status_note} for {resolved_cust['name']}.",
                         original_text=orig_text,
                         normalized_text=norm_text,
                         normalization_notes=norm_meta,
@@ -230,7 +244,6 @@ class IntentExecutor:
                         clarification_question="Kripya product ka naam batayein.",
                         original_text=orig_text,
                     )
-                res_prod = ProductService.resolve_product(shop_id, p_name)
                 qty_change = params.get("quantity_change") or params.get("quantity")
                 if qty_change is None:
                     return ExecutionResult(
@@ -241,6 +254,15 @@ class IntentExecutor:
                         original_text=orig_text,
                     )
 
+                auto_create_prod = action in ("add_stock", "adjust_stock")
+                res_prod, was_prod_created = ProductService.resolve_or_create_product(
+                    shop_id=shop_id,
+                    product_name=p_name,
+                    price=params.get("price") or Decimal("0.00"),
+                    unit=params.get("unit") or "unit",
+                    auto_create=auto_create_prod,
+                )
+
                 if action == "reduce_stock" and Decimal(str(qty_change)) > Decimal("0.00"):
                     qty_change = -Decimal(str(qty_change))
 
@@ -250,11 +272,12 @@ class IntentExecutor:
                     quantity_change=qty_change,
                     reason=params.get("reason") or action,
                 )
+                prod_created_prefix = f"New product '{res_prod['name']}' initialized. " if was_prod_created else ""
                 return ExecutionResult(
                     success=True,
                     action=action,
                     result=adj,
-                    message=f"Stock for '{res_prod['name']}' adjusted by {qty_change}. New quantity: {adj['new_quantity']}.",
+                    message=f"{prod_created_prefix}Stock for '{res_prod['name']}' adjusted by {qty_change}. New quantity: {adj['new_quantity']}.",
                     original_text=orig_text,
                     normalized_text=norm_text,
                     normalization_notes=norm_meta,

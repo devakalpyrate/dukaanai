@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { AssistantState } from '../types';
+import { useTheme } from '../context/ThemeContext';
 
 interface WaveformProps {
   state: AssistantState;
@@ -8,6 +9,8 @@ interface WaveformProps {
 
 export const Waveform: React.FC<WaveformProps> = ({ state, audioLevel }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -24,27 +27,47 @@ export const Waveform: React.FC<WaveformProps> = ({ state, audioLevel }) => {
       const height = canvas.height;
       const centerY = height / 2;
 
-      let strokeColor = 'rgba(0, 210, 255, 0.5)';
-      let glowColor = 'rgba(0, 242, 254, 0.4)';
+      let strokeColor = isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 210, 255, 0.5)';
+      let glowColor = isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 242, 254, 0.4)';
       let waveCount = 3;
       let baseAmp = 3;
 
-      if (state === 'listening') {
-        strokeColor = 'rgba(239, 68, 68, 0.85)';
-        glowColor = 'rgba(239, 68, 68, 0.6)';
-        baseAmp = 6 + audioLevel * 34;
-      } else if (state === 'transcribing' || state === 'thinking') {
-        strokeColor = 'rgba(245, 158, 11, 0.8)';
-        glowColor = 'rgba(245, 158, 11, 0.5)';
-        baseAmp = 8;
-      } else if (state === 'executing') {
-        strokeColor = 'rgba(157, 78, 221, 0.85)';
-        glowColor = 'rgba(157, 78, 221, 0.6)';
-        baseAmp = 12;
-      } else if (state === 'speaking') {
-        strokeColor = 'rgba(0, 242, 254, 0.9)';
-        glowColor = 'rgba(0, 242, 254, 0.7)';
-        baseAmp = 15;
+      if (isDark) {
+        if (state === 'listening') {
+          strokeColor = 'rgba(255, 255, 255, 0.9)';
+          glowColor = 'rgba(255, 255, 255, 0.5)';
+          baseAmp = 6 + audioLevel * 34;
+        } else if (state === 'transcribing' || state === 'thinking') {
+          strokeColor = 'rgba(220, 220, 220, 0.8)';
+          glowColor = 'rgba(220, 220, 220, 0.4)';
+          baseAmp = 8;
+        } else if (state === 'executing') {
+          strokeColor = 'rgba(255, 255, 255, 0.85)';
+          glowColor = 'rgba(255, 255, 255, 0.5)';
+          baseAmp = 12;
+        } else if (state === 'speaking') {
+          strokeColor = 'rgba(255, 255, 255, 0.95)';
+          glowColor = 'rgba(255, 255, 255, 0.6)';
+          baseAmp = 15;
+        }
+      } else {
+        if (state === 'listening') {
+          strokeColor = 'rgba(239, 68, 68, 0.85)';
+          glowColor = 'rgba(239, 68, 68, 0.6)';
+          baseAmp = 6 + audioLevel * 34;
+        } else if (state === 'transcribing' || state === 'thinking') {
+          strokeColor = 'rgba(245, 158, 11, 0.8)';
+          glowColor = 'rgba(245, 158, 11, 0.5)';
+          baseAmp = 8;
+        } else if (state === 'executing') {
+          strokeColor = 'rgba(157, 78, 221, 0.85)';
+          glowColor = 'rgba(157, 78, 221, 0.6)';
+          baseAmp = 12;
+        } else if (state === 'speaking') {
+          strokeColor = 'rgba(0, 242, 254, 0.9)';
+          glowColor = 'rgba(0, 242, 254, 0.7)';
+          baseAmp = 15;
+        }
       }
 
       ctx.save();
