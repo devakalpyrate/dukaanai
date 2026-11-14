@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package dukaanai.llm;
+
+message UnderstandIntentRequest {
+  string text = 1;
+  string context = 2;
+  int32 shop_id = 3;
+}
+
+message UnderstandIntentResponse {
+  bool success = 1;
+  string intent = 2;
+  string action = 3;
+  string parameters_json = 4;
+  string entities_json = 5;
+  bool requires_confirmation = 6;
+  bool clarification_needed = 7;
+  string clarification_question = 8;
+  string error_message = 9;
+}
+
+service LLMService {
+  rpc UnderstandIntent (UnderstandIntentRequest) returns (UnderstandIntentResponse);
+}
