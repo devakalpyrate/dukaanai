@@ -803,7 +803,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                       required
                       value={shopName}
                       onChange={(e) => setShopName(e.target.value)}
-                      placeholder="e.g. Mahabir Kirana & General Store"
+                      placeholder="e.g. Apna Kirana & General Store"
                       className="w-full pl-8 pr-3 py-2 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
                     />
                   </div>

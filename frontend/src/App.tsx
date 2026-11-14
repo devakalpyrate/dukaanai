@@ -9,6 +9,7 @@ import { SalesPage } from './pages/SalesPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { VoiceAssistantPage } from './pages/VoiceAssistantPage';
+import { DocsPage } from './pages/DocsPage';
 import { PageId, UserProfile } from './types';
 
 const API_BASE = typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8000';
@@ -21,6 +22,7 @@ const pagePathMap: Record<PageId, string> = {
   sales: '/sales',
   reports: '/reports',
   settings: '/settings',
+  docs: '/docs',
 };
 
 const pathToPageMap: Record<string, PageId> = {
@@ -32,12 +34,51 @@ const pathToPageMap: Record<string, PageId> = {
   '/sales': 'sales',
   '/reports': 'reports',
   '/settings': 'settings',
+  '/docs': 'docs',
+};
+
+const getInitialUser = (): UserProfile | null => {
+  try {
+    const token = localStorage.getItem('dukaanai_token');
+    const savedUserStr = localStorage.getItem('dukaanai_user');
+    if (token && savedUserStr) {
+      const u = JSON.parse(savedUserStr);
+      return {
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: 'Store Owner',
+        shop_id: u.shop_id,
+        shop_name: u.shop_name,
+      };
+    }
+  } catch {}
+  return null;
+};
+
+const getInitialDocSection = (): string => {
+  if (typeof window === 'undefined') return 'welcome';
+  const path = window.location.pathname;
+  if (path.startsWith('/docs/')) {
+    return path.split('/docs/')[1] || 'welcome';
+  }
+  return 'welcome';
+};
+
+const getInitialPage = (initialUser: UserProfile | null): PageId => {
+  if (typeof window === 'undefined') return 'overview';
+  const path = window.location.pathname;
+  if (path.startsWith('/docs')) return 'docs';
+  if (!initialUser) return 'overview';
+  if (path === '/login' || path === '/') return 'overview';
+  return pathToPageMap[path] || 'overview';
 };
 
 export const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<PageId>('overview');
+  const [user, setUser] = useState<UserProfile | null>(getInitialUser);
+  const [currentPage, setCurrentPage] = useState<PageId>(() => getInitialPage(getInitialUser()));
+  const [docSubSection, setDocSubSection] = useState<string>(getInitialDocSection);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [user, setUser] = useState<UserProfile | null>(null);
 
   const handleNavigate = (page: PageId) => {
     setCurrentPage(page);
@@ -48,46 +89,45 @@ export const App: React.FC = () => {
   };
 
   useEffect(() => {
-    const token = localStorage.getItem('dukaanai_token');
-    const savedUserStr = localStorage.getItem('dukaanai_user');
     const currentPath = window.location.pathname;
 
-    if (token && savedUserStr) {
-      try {
-        const u = JSON.parse(savedUserStr);
-        setUser({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          role: 'Store Owner',
-          shop_id: u.shop_id,
-          shop_name: u.shop_name,
-        });
-
-        if (currentPath === '/login' || currentPath === '/') {
-          window.history.replaceState(null, '', '/home');
-          setCurrentPage('overview');
-        } else if (pathToPageMap[currentPath]) {
-          setCurrentPage(pathToPageMap[currentPath]);
-        } else {
-          window.history.replaceState(null, '', '/home');
-          setCurrentPage('overview');
-        }
-        return;
-      } catch {}
+    if (currentPath.startsWith('/docs')) {
+      const parts = currentPath.split('/docs/')[1];
+      if (parts) {
+        setDocSubSection(parts);
+      }
+      setCurrentPage('docs');
+      return;
     }
 
-    setUser(null);
-    if (currentPath !== '/login') {
-      window.history.replaceState(null, '', '/login');
+    if (user) {
+      if (currentPath === '/login' || currentPath === '/') {
+        window.history.replaceState(null, '', '/home');
+        setCurrentPage('overview');
+      } else if (pathToPageMap[currentPath]) {
+        setCurrentPage(pathToPageMap[currentPath]);
+      }
+    } else {
+      if (currentPath !== '/login') {
+        window.history.replaceState(null, '', '/login');
+      }
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     const onPopState = () => {
       const currentPath = window.location.pathname;
-      const token = localStorage.getItem('dukaanai_token');
 
+      if (currentPath.startsWith('/docs')) {
+        const parts = currentPath.split('/docs/')[1];
+        if (parts) {
+          setDocSubSection(parts);
+        }
+        setCurrentPage('docs');
+        return;
+      }
+
+      const token = localStorage.getItem('dukaanai_token');
       if (!token) {
         if (currentPath !== '/login') {
           window.history.replaceState(null, '', '/login');
@@ -161,10 +201,16 @@ export const App: React.FC = () => {
         return <ReportsPage />;
       case 'settings':
         return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
+      case 'docs':
+        return <DocsPage onBackToApp={() => handleNavigate('overview')} initialSection={docSubSection} />;
       default:
         return <OverviewPage onOpenVoice={() => handleNavigate('voice-assistant')} onNavigate={handleNavigate} />;
     }
   };
+
+  if (currentPage === 'docs') {
+    return <DocsPage onBackToApp={() => handleNavigate('overview')} initialSection={docSubSection} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">

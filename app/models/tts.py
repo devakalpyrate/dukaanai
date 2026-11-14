@@ -19,9 +19,18 @@ def synthesize_speech(
         fd, output_path = tempfile.mkstemp(suffix=".wav")
         os.close(fd)
 
-    api_key = os.getenv("BODHAN_API_KEY")
-    if not api_key:
-        api_key = "sk-FTpEsbROGh6KAL0SVKg2tg"
+    api_key = (
+        os.getenv("BANDHON_AI_TTS_API_KEY")
+        or os.getenv("BANDHON_AI_TTS_KEY")
+        or os.getenv("BANDHON_AI_API_KEY")
+        or os.getenv("BODHAN_API_KEY")
+        or "sk-FTpEsbROGh6KAL0SVKg2tg"
+    )
+
+    tts_url = (
+        os.getenv("BANDHON_AI_TTS_URL")
+        or "https://api.bodhan.ai/v1/audio/speech"
+    )
 
     if not lang:
         det = detect_language(text)
@@ -46,13 +55,13 @@ def synthesize_speech(
     }
 
     resp = requests.post(
-        "https://api.bodhan.ai/v1/audio/speech",
+        tts_url,
         headers=headers,
         json=payload,
         timeout=30
     )
     if resp.status_code != 200:
-        raise RuntimeError(f"Bodhan TTS failed with code {resp.status_code}: {resp.text}")
+        raise RuntimeError(f"bandhon.ai TTS failed with code {resp.status_code}: {resp.text}")
 
     with open(output_path, "wb") as f:
         f.write(resp.content)

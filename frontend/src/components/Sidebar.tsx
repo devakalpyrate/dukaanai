@@ -7,9 +7,9 @@ import {
   ArrowLeftRight,
   BarChart3,
   Settings,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ArrowUpRight,
 } from 'lucide-react';
 import { PageId } from '../types';
 
@@ -53,16 +53,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     >
       {/* Brand Header */}
       {collapsed ? (
-        <div className="py-3 px-1 flex flex-col items-center justify-center gap-2 border-b border-[var(--border-color)]">
-          <div className="w-10 h-10 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-xl shrink-0 shadow-sm border border-[#E6B800]">
-            द
-          </div>
+        <div className="py-4 px-2 flex flex-col items-center justify-center border-b border-[var(--border-color)]">
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer"
-            title="Expand Sidebar"
+            className="relative group w-11 h-11 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-xl shrink-0 shadow-sm border border-[#E6B800] cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95"
+            title="Open Sidebar"
+            aria-label="Open Sidebar"
           >
-            <ChevronRight className="w-4 h-4" />
+            {/* Clean logo by default */}
+            <span className="group-hover:opacity-0 transition-opacity duration-200">
+              द
+            </span>
+            {/* Opening switch icon appears on hover over the logo */}
+            <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-black">
+              <PanelLeftOpen className="w-5 h-5 stroke-[2.2]" />
+            </span>
           </button>
         </div>
       ) : (
@@ -83,10 +88,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-all cursor-pointer shrink-0"
-            title="Collapse Sidebar"
+            className="p-2 rounded-xl text-[var(--text-muted)] hover:text-[#FFD026] hover:bg-black/5 dark:hover:bg-white/10 transition-all cursor-pointer shrink-0 border border-transparent hover:border-[var(--border-color)] active:scale-95 shadow-xs"
+            title="Close Sidebar"
+            aria-label="Close Sidebar"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <PanelLeftClose className="w-5 h-5" />
           </button>
         </div>
       )}
@@ -128,20 +134,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
         })}
       </nav>
 
-      {/* Bottom Store Status Pill */}
+      {/* Bottom Documentation Link */}
       <div className="p-3 border-t border-[var(--border-color)]">
         {collapsed ? (
-          <div className="flex justify-center" title="Voice AI Engine Ready">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          </div>
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Documentation"
+            className="flex justify-center p-2.5 rounded-xl text-[var(--text-secondary)] hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+          >
+            <ArrowUpRight className="w-5 h-5 text-[#FFD026]" />
+          </a>
         ) : (
-          <div className="flex items-center gap-2.5 p-2 rounded-xl bg-black/5 dark:bg-white/5 border border-[var(--border-color)]">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            <div className="truncate text-left">
-              <p className="text-[11px] font-bold text-[var(--text-primary)] truncate">Voice AI Ready</p>
-              <p className="text-[10px] text-[var(--text-muted)] truncate">Multilingual Voice Engine</p>
-            </div>
-          </div>
+          <a
+            href="/docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 border border-[var(--border-color)] hover:border-[#FFD026]/40 transition-all cursor-pointer group text-decoration-none"
+          >
+            <span className="text-xs font-bold text-[var(--text-primary)] group-hover:text-[#FFD026] transition-colors">
+              Documentation
+            </span>
+            <ArrowUpRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[#FFD026] transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </a>
         )}
       </div>
     </aside>

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DukaanAI — System Documentation & Architecture Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0B0E14;
+      --card-bg: #151921;
+      --border: #232936;
+      --text: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --yellow: #FFD026;
+      --yellow-border: #E6B800;
+      --emerald: #10B981;
+      --rose: #F43F5E;
+      --cyan: #06B6D4;
+      --blue: #3B82F6;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding-bottom: 80px;
+    }
+    code, pre {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 24px 0;
+      position: sticky;
+      top: 0;
+      background: rgba(11, 14, 20, 0.92);
+      backdrop-filter: blur(12px);
+      z-index: 50;
+    }
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .logo-badge {
+      width: 40px;
+      height: 40px;
+      background: var(--yellow);
+      color: #000;
+      font-size: 22px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      border: 1px solid var(--yellow-border);
+    }
+    .title-group h1 {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    .title-group h1 span {
+      color: var(--yellow);
+    }
+    .title-group p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(255, 208, 38, 0.1);
+      color: var(--yellow);
+      border: 1px solid rgba(255, 208, 38, 0.25);
+    }
+    nav.toc {
+      margin: 32px 0;
+      padding: 20px 24px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+    nav.toc h2 {
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    nav.toc ul {
+      list-style: none;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 10px;
+    }
+    nav.toc a {
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      transition: all 0.2s;
+    }
+    nav.toc a:hover {
+      background: rgba(255, 208, 38, 0.1);
+      color: var(--yellow);
+    }
+    section {
+      margin-top: 48px;
+      scroll-margin-top: 100px;
+    }
+    .section-title {
+      font-size: 22px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .card p {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+    }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+    }
+    .pill-green { background: rgba(16, 185, 129, 0.15); color: #34D399; }
+    .pill-yellow { background: rgba(255, 208, 38, 0.15); color: #FCD34D; }
+    .pill-rose { background: rgba(244, 63, 94, 0.15); color: #FB7185; }
+    .pill-blue { background: rgba(59, 130, 246, 0.15); color: #60A5FA; }
+    pre {
+      background: #0D1017;
+      border: 1px solid #1E2330;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 12px;
+      color: #E2E8F0;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    ul.checklist {
+      list-style: none;
+      margin-top: 8px;
+    }
+    ul.checklist li {
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 6px 0;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    ul.checklist li::before {
+      content: "✓";
+      color: var(--emerald);
+      font-weight: 900;
+    }
+    .alert-box {
+      border-left: 4px solid var(--yellow);
+      background: rgba(255, 208, 38, 0.05);
+      padding: 14px 18px;
+      border-radius: 0 12px 12px 0;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+    .alert-box strong {
+      color: var(--yellow);
+    }
+    footer {
+      margin-top: 64px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Header -->
+  <header>
+    <div class="container header-content">
+      <div class="brand">
+        <div class="logo-badge">द</div>
+        <div class="title-group">
+          <h1>Dukaan<span>AI</span> Documentation</h1>
+          <p>System Architecture, Feature Roadmap & Cloud Migration</p>
+        </div>
+      </div>
+      <div class="badge">
+        <span>●</span> Single Source of Truth
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Table of Contents -->
+    <nav class="toc">
+      <h2>Quick Navigation</h2>
+      <ul>
+        <li><a href="#overview">1. Current Architecture Overview</a></li>
+        <li><a href="#voice-engine">2. Voice AI Query & Action Engine</a></li>
+        <li><a href="#upi-system">3. UPI Payment Collection Standards</a></li>
+        <li><a href="#payment-proof">4. Unique Links & UTR Verification</a></li>
+        <li><a href="#cloud-migration">5. Future Cloud Migration (Vercel + bandhon.ai)</a></li>
+        <li><a href="#conversational-ai">6. Multi-Turn Voice & Same-Name Logic</a></li>
+        <li><a href="#security-rules">7. Security, Privacy & Constraints</a></li>
+      </ul>
+    </nav>
+
+    <!-- SECTION 1 -->
+    <section id="overview">
+      <h2 class="section-title">1. Current Architecture Overview</h2>
+      <div class="card">
+        <p>
+          DukaanAI is an intelligent, voice-first Khata and store management system tailored for Indian Kirana and retail stores. It combines multilingual speech comprehension with real-time transactional double-entry accounting.
+        </p>
+        <div class="grid-2">
+          <div>
+            <h3>Backend Stack</h3>
+            <ul class="checklist">
+              <li>FastAPI production server with multi-tenant data isolation</li>
+              <li>MySQL relational database engine with automated transaction rollbacks</li>
+              <li>Bodhan/Bandhon Cloud Indic STT API + Groq Indic LLM for high-speed intent parsing</li>
+              <li>Python <code>qrcode</code> generator endpoint (<code>/api/payments/qr-code</code>) with zero external network blocks</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Frontend Stack</h3>
+            <ul class="checklist">
+              <li>React 19 + TypeScript + Vite build pipeline</li>
+              <li>Tailwind CSS with glassmorphic dark UI and custom scrollbars</li>
+              <li>Dual login authentication: Mobile OTP (+91) & Email Address</li>
+              <li>Single hover-morphed sidebar navigation switch</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2 -->
+    <section id="voice-engine">
+      <h2 class="section-title">2. Voice AI Query & Action Engine</h2>
+      <div class="card">
+        <p>The voice assistant supports seamless Kirana commands in Hindi, Hinglish, Odia, and English without requiring exact button clicks.</p>
+        
+        <div class="grid-2">
+          <div class="card" style="margin-bottom: 0;">
+            <h3>Transactional Actions</h3>
+            <p><span class="pill pill-rose">add_credit</span> "रमेश का ₹500 का उधार लिख दो"</p>
+            <p><span class="pill pill-green">record_payment</span> "सनी ने ₹25,000 जमा किए हैं"</p>
+            <p><span class="pill pill-blue">clear_debt</span> "रमेश का पूरा खाता चुकता कर दो"</p>
+            <p><span class="pill pill-yellow">check_balance</span> "शुभम का कितना बकाया है?"</p>
+          </div>
+
+          <div class="card" style="margin-bottom: 0;">
+            <h3>Analytical & Dataset Queries</h3>
+            <p><span class="pill pill-blue">list_customers</span> "मेरी लिस्ट में कौन-कौन है?"</p>
+            <p><span class="pill pill-rose">top_debtors</span> "टॉप 3 / टॉप 5 सबसे ज्यादा उधार किसका है?"</p>
+            <p><span class="pill pill-yellow">filter_debtors</span> "किस-किस का उधार ₹20,000 से ज्यादा है?"</p>
+            <p><span class="pill pill-green">cleared_debtors</span> "किस-किस का खाता क्लियर हो चुका है?"</p>
+          </div>
+        </div>
+
+        <div class="alert-box" style="margin-top: 16px;">
+          <strong>Partial Payment Guardrail:</strong> When a user mentions a specific payment amount while asking to update balance (e.g., <em>"₹25,000 de chuka hai minus karke likh do"</em>), the system strictly treats it as a partial payment (<code>record_payment</code>) and never wipes out the entire balance.
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 3 -->
+    <section id="upi-system">
+      <h2 class="section-title">3. UPI Payment Collection Standards</h2>
+      <div class="card">
+        <p>
+          DukaanAI follows the official <strong>NPCI (National Payments Corporation of India)</strong> standards for digital payment collections.
+        </p>
+
+        <h3>Why UPI PIN is NEVER stored or requested</h3>
+        <p>
+          In standard banking protocols, receiving money into a merchant account requires only the <strong>UPI ID (VPA)</strong> and the <strong>Merchant Display Name</strong>. A UPI PIN is strictly an authorization secret for sending/debiting money from an account. DukaanAI never prompts for or stores merchant UPI PINs.
+        </p>
+
+        <h3>Dynamic UPI URI Generation & Local QR Code Engine</h3>
+        <p>QR codes and payment deep-links are generated dynamically using standard format:</p>
+        <pre>upi://pay?pa=MERCHANT_UPI_ID&pn=SHOP_NAME&am=AMOUNT&cu=INR&tn=KHATA_PAYMENT</pre>
+        <p>When scanned by Google Pay, PhonePe, or Paytm, the customer's app auto-fills the exact payable amount and merchant identity.</p>
+
+        <h3 style="margin-top: 16px;">Local Python QR Engine (<code>/api/payments/qr-code</code>)</h3>
+        <p>
+          QR codes are generated directly by the backend using Python's <code>qrcode</code> and <code>Pillow</code> libraries. This eliminates external third-party dependencies, ensures zero CORS/adblocker failures, and renders instant PNG images offline in less than 3 milliseconds.
+        </p>
+
+        <h3 style="margin-top: 16px;">Automatic WhatsApp Delivery (Desktop &amp; Mobile Universal Link)</h3>
+        <p>
+          Using the official <code>https://api.whatsapp.com/send?phone=...&amp;text=...</code> universal link, DukaanAI automatically triggers WhatsApp without extra confirmations:
+        </p>
+        <ul class="checklist">
+          <li><strong>On Mobile Devices:</strong> Direct OS intent handoff to the native WhatsApp app with the customer's chat and pre-filled bill message.</li>
+          <li><strong>On Desktop Computers:</strong> Opens WhatsApp Web or WhatsApp Desktop directly in the browser.</li>
+          <li><strong>Message Payload:</strong> Includes personalized greeting, exact outstanding amount, direct 1-click UPI URI, and the locally rendered QR code link.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SECTION 4 -->
+    <section id="payment-proof">
+      <h2 class="section-title">4. Unique Links & UTR Verification</h2>
+      <div class="card">
+        <p>To eliminate high gateway transaction fees (1.5% - 2%) and prevent payment fraud, the architecture supports direct verification:</p>
+        
+        <div class="grid-2">
+          <div>
+            <h3>Zero-Collision Tokens</h3>
+            <p>Every payment request creates a unique 128-bit Nanoid/UUID token:</p>
+            <pre>https://dukaanai.in/pay/pay_9f8a3b21c</pre>
+            <p>Even with millions of concurrent customers, each token is mathematically collision-free and scoped strictly to that customer and shop.</p>
+          </div>
+
+          <div>
+            <h3>Verification Flow</h3>
+            <ul class="checklist">
+              <li>Customer receives WhatsApp / SMS link with pre-filled debt amount</li>
+              <li>Customer completes payment via any installed UPI app</li>
+              <li>Customer enters 12-digit UTR and uploads screenshot on the link</li>
+              <li>Merchant receives notification: <em>"Review & Approve ₹2,000"</em></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 5 -->
+    <section id="cloud-migration">
+      <h2 class="section-title">5. Future Cloud Migration (Vercel + bandhon.ai)</h2>
+      <div class="card">
+        <p>
+          During local development, DukaanAI runs local CUDA models (SraVaani STT, Ollama, IndicF5). Moving to serverless cloud hosting (e.g. Vercel) requires migrating to external APIs.
+        </p>
+
+        <div class="grid-2">
+          <div>
+            <h3>Vercel Serverless Limitations</h3>
+            <ul class="checklist">
+              <li>No GPU access on standard serverless instances</li>
+              <li>Strict execution time limits (10s to 60s per invocation)</li>
+              <li>Package bundle size limits (50MB - 250MB)</li>
+            </ul>
+          </div>
+          <div>
+            <h3>bandhon.ai Cloud Integration (STT & TTS Separation)</h3>
+            <ul class="checklist">
+              <li><strong>bandhon.ai STT:</strong> Offload Speech-to-Text to dedicated audio transcription endpoints (<code>BANDHON_AI_STT_API_KEY</code> & <code>BANDHON_AI_STT_URL</code>). Auto-falls back to Groq/local model if unavailable.</li>
+              <li><strong>bandhon.ai TTS:</strong> Offload natural multilingual voice response generation to dedicated speech synthesis endpoints (<code>BANDHON_AI_TTS_API_KEY</code> & <code>BANDHON_AI_TTS_URL</code>).</li>
+              <li>Connect backend to remote cloud MySQL (PlanetScale / Supabase / RDS).</li>
+            </ul>
+          </div>
+        </div>
+
+        <pre>
+# Example Cloud API Request Flow:
+[Browser Mic Audio]
+       │
+       ▼ (POST /api/voice/transcribe)
+[Vercel Serverless Function]
+       │
+       ▼ (HTTPS Call to bandhon.ai Cloud API)
+[bandhon.ai STT & Indic NLP Engine]
+       │
+       ▼ (Transcribed Text + Intent Payload)
+[FastAPI Backend ➔ MySQL Cloud DB]
+        </pre>
+      </div>
+    </section>
+
+    <!-- SECTION 6 -->
+    <section id="conversational-ai">
+      <h2 class="section-title">6. Multi-Turn Voice & Same-Name Logic</h2>
+      <div class="card">
+        <p>Documented blueprint for future conversational advancements (kept lean for now to avoid premature complexity):</p>
+        
+        <h3>Missing Information Follow-Up (Clarification Loop)</h3>
+        <p>If a shopkeeper gives partial information (e.g. <em>"रमेश का उधार लिखो"</em> without amount or items):</p>
+        <ul class="checklist">
+          <li><strong>Step 1:</strong> System asks: <em>"रमेश का कितना उधार लिखना है और क्या सामान लिया है?"</em></li>
+          <li><strong>Step 2:</strong> If phone number is missing: <em>"रमेश जी का फोन नंबर बता दीजिए ताकि रसीद भेज सकें?"</em></li>
+          <li><strong>Step 3:</strong> Once answered, entry is finalized in the database.</li>
+        </ul>
+
+        <h3 style="margin-top: 16px;">Same-Name Ambiguity Resolution</h3>
+        <p>If two customers have the same name (e.g., two "Ramesh"), the system avoids IDs and uses human-friendly anchors:</p>
+        <ul class="checklist">
+          <li><strong>Phone Digits:</strong> <em>"रमेश (...8043 वाले) या रमेश (...1234 वाले)?"</em></li>
+          <li><strong>Outstanding Balance:</strong> <em>"जिनका ₹2,100 बकाया है, या जिनका खाता क्लियर है?"</em></li>
+          <li><strong>Disambiguation Tags:</strong> Prompting shopkeepers to add an identifier like <em>"रमेश टेलर"</em> or <em>"रमेश स्टेशन रोड"</em> upon creation.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SECTION 7 -->
+    <section id="security-rules">
+      <h2 class="section-title">7. Security, Privacy & Constraints</h2>
+      <div class="card">
+        <ul class="checklist">
+          <li><strong>Frontend Cleanliness:</strong> Zero exposure of internal technical jargon (no mention of "MySQL", "Vercel", "IndicF5", or database engines on user-facing banners).</li>
+          <li><strong>Multi-Tenant Isolation:</strong> Every database query is strictly filtered by <code>shop_id</code> to prevent cross-store leakage.</li>
+          <li><strong>Repository Safety:</strong> Never commit secrets, API keys, or database credentials. Follow the strict <em>"Dont PusBro"</em> protocol (never push to Git remote).</li>
+          <li><strong>Python Code Standards:</strong> Production Python files maintain zero inline comments (<code>#</code>).</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>DukaanAI Documentation &bull; Built for Local Indian Retail &bull; Confidential & Proprietary</p>
+    </div>
+  </footer>
+
+</body>
+</html>

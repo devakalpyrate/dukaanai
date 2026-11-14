@@ -5,7 +5,8 @@ export type PageId =
   | 'products'
   | 'sales'
   | 'reports'
-  | 'settings';
+  | 'settings'
+  | 'docs';
 
 export type AssistantState =
   | 'idle'

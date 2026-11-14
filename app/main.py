@@ -8,10 +8,10 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -92,7 +92,7 @@ app = FastAPI(
     description="Production-hardened Backend API for DukaanAI Smart Shop Assistant",
     version="1.0.0",
     lifespan=lifespan,
-    docs_url=None if os.getenv("ENVIRONMENT") == "production" else "/docs",
+    docs_url="/api/docs",
     redoc_url=None,
 )
 
@@ -136,7 +136,9 @@ def favicon_svg():
 @app.get("/automation")
 @app.get("/reports")
 @app.get("/settings")
-def serve_ui():
+@app.get("/docs")
+@app.get("/docs/{subpath:path}")
+def serve_ui(subpath: Optional[str] = None):
     ui_file = static_dir / "index.html"
     if ui_file.exists():
         return FileResponse(ui_file)
@@ -657,7 +659,7 @@ def health_check():
     "/api/voice/transcribe",
     response_model=TranscriptionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Transcribe audio file using SraVaani STT",
+    summary="Transcribe audio file using Cloud STT API",
 )
 async def transcribe_audio_endpoint(
     request: Request,
@@ -763,9 +765,11 @@ async def transcribe_audio_endpoint(
             raise
         except Exception as exc:
             logger.error("Transcription execution error: %s", exc)
+            err_msg = str(exc)
+            clean_detail = err_msg if ("API key" in err_msg or "Speech-to-Text" in err_msg) else "Failed to transcribe audio. Please verify the audio file format."
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to transcribe audio. Please verify the audio file format.",
+                detail=clean_detail,
             ) from exc
 
         return TranscriptionResponse(
@@ -971,3 +975,29 @@ def get_inventory_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     inv = InventoryService.get_stock(current_shop["shop_id"])
     return {"success": True, "data": inv}
+
+@app.get("/api/payments/qr-code")
+def generate_qr_code_endpoint(
+    request: Request,
+    data: str = Query(..., min_length=1, max_length=1000, description="Payload or UPI URI to encode into QR code"),
+):
+    import io
+    import qrcode
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=2,
+    )
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return Response(
+        content=buf.getvalue(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )

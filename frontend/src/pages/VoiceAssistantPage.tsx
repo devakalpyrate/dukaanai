@@ -21,6 +21,8 @@ import {
   Trash2,
   ChevronRight,
   ChevronLeft,
+  PanelRightClose,
+  PanelRightOpen,
 } from 'lucide-react';
 import { Orb } from '../components/Orb';
 import { Waveform } from '../components/Waveform';
@@ -523,7 +525,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       await executeCommand(recognized);
     } catch (err: any) {
       setState('error');
-      setStatusSubtitle('Error processing audio.');
+      setStatusSubtitle(err.message || 'Error processing audio.');
       setProgressPercent(0);
       setProgressLabel('');
     }
@@ -765,15 +767,16 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       <button
         type="button"
         onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-        className={`fixed top-1/2 -translate-y-1/2 z-40 w-10 h-11 rounded-l-xl bg-[#FFD026] hover:bg-[#F6B511] text-black shadow-2xl flex items-center justify-center border-y-2 border-l-2 border-[#E6B800] transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 ${
+        className={`fixed top-1/2 -translate-y-1/2 z-40 w-11 h-12 rounded-l-xl bg-[#FFD026] hover:bg-[#F6B511] text-black shadow-2xl flex items-center justify-center border-y-2 border-l-2 border-[#E6B800] transition-all duration-300 cursor-pointer hover:scale-105 active:scale-95 ${
           isHistoryOpen ? 'right-80 sm:right-96' : 'right-0'
         }`}
         title={isHistoryOpen ? 'Close Voice History' : 'Open Voice History'}
+        aria-label={isHistoryOpen ? 'Close Voice History' : 'Open Voice History'}
       >
         {isHistoryOpen ? (
-          <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+          <PanelRightClose className="w-5 h-5 stroke-[2.2]" />
         ) : (
-          <History className="w-5 h-5 stroke-[2.5]" />
+          <PanelRightOpen className="w-5 h-5 stroke-[2.2]" />
         )}
       </button>
 
@@ -813,9 +816,10 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
               type="button"
               onClick={() => setIsHistoryOpen(false)}
               className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer"
-              title="Close sidebar"
+              title="Close voice history sidebar"
+              aria-label="Close voice history sidebar"
             >
-              <X className="w-4 h-4" />
+              <PanelRightClose className="w-4 h-4" />
             </button>
           </div>
         </div>

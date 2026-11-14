@@ -305,7 +305,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                     type="text"
                     value={payeeName}
                     onChange={(e) => setPayeeName(e.target.value)}
-                    placeholder="e.g. Mahabir Book Store"
+                    placeholder="e.g. Store Name"
                     className="w-full p-2.5 rounded-xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026]"
                   />
                   <p className="text-[10px] text-[var(--text-muted)] mt-1">

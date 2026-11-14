@@ -17,6 +17,8 @@ DEFAULT_GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 VALID_INTENTS = {
     "customer_management",
     "credit_transaction",
+    "customer_query",
+    "khata_query",
     "product_management",
     "inventory_update",
     "stock_query",
@@ -47,32 +49,41 @@ SUPPORTED INTENTS & ACTIONS:
    - "add_customer", "find_customer"
 2. "credit_transaction":
    - "record_credit" (giving goods on credit / udhar diya / baki likho)
-   - "record_payment" (received payment / jama kiya / wapas mila)
-   - "clear_debt" (customer cleared all dues / sara udhar chukta ho gaya / full balance cleared / udhar khatam / hisaab barabar / udhar clear ho gaya / sab baki chukta)
-3. "product_management":
+   - "record_payment" (received payment / jama kiya / wapas mila / de chuka hai / minus karke likh do / kat do / partial payment / paid specific amount)
+   - "clear_debt" (customer cleared ALL remaining dues / sara udhar chukta ho gaya / full balance cleared / udhar khatam / hisaab barabar / udhar clear ho gaya / sab baki chukta -- ONLY when NO specific amount is given!)
+3. "customer_query":
+   - "list_customers" (who is in list or dataset / dekh ke batao meri list me aur kaun kaun hai / customer list / mere grahak)
+   - "top_debtors" (who has highest debt / top 3 / top 5 / kiska udhaar sabse jyada hai / top 3 batao / top 5 debtor kaun hai). Parameters: {"limit": 3 or 5}
+   - "filter_debtors" (debt greater than threshold / 50000 se jyada kiska hai / 20000 se zyada kiska udhar hai). Parameters: {"threshold": "50000.00"}
+   - "cleared_debtors" (whose debt is cleared / zero balance / kiska udhar clear ho chuka hai / kiska khata chukta hai)
+   - "check_balance" (specific customer debt status / Ramesh ka kitna baki hai / Sunny ka hisab batao). Parameters: {"customer_name": "Ramesh"}
+4. "product_management":
    - "add_product", "update_product_price"
-4. "inventory_update":
+5. "inventory_update":
    - "add_stock", "reduce_stock"
-5. "stock_query":
+6. "stock_query":
    - "check_stock", "check_low_stock"
-6. "history_query":
+7. "history_query":
    - "customer_history", "daily_summary"
-7. "unknown":
+8. "unknown":
    - If ambiguous, unintelligible, or unanswerable.
 
 STRICT NORMALIZATION & SAFETY RULES:
 1. SPOKEN NUMBERS & AMOUNTS:
-   - Convert spoken numbers in Hindi/Odia/English (e.g., 'sau' -> 100, 'dedh sau' -> 150, 'panchas' -> 50, 'pachaas hazaar' -> 50000) to exact decimal string in parameters (e.g. "amount": "150.00").
+   - Convert spoken numbers in Hindi/Odia/English (e.g., 'sau' -> 100, 'dedh sau' -> 150, 'panchas' -> 50, 'pachaas hazaar' -> 50000, 'pachees hazaar' -> 25000) to exact decimal string in parameters (e.g. "amount": "25000.00").
    - NEVER represent money as float. Always output amounts as decimal strings.
-2. CRITICAL FINANCIAL CONTRADICTIONS:
+2. CRITICAL: PARTIAL PAYMENT VS FULL CLEARANCE:
+   - If ANY specific amount is mentioned (e.g. '₹25,000 de chuka hai', '25000 de chuka hai jitna minus karke khate me likh do', '500 de diya', '1000 chukta kiya'), the action is ALWAYS "record_payment" with that exact amount!
+   - DO NOT use "clear_debt" if an amount is mentioned! "clear_debt" is strictly for full 100% debt wipeouts where no specific number is given (e.g. 'Ramesh ka sara udhar clear kar do', 'hisaab barabar kar do').
+3. CRITICAL FINANCIAL CONTRADICTIONS:
    - NEVER silently convert a negative number into a positive number.
    - If user says 'minus 50 rupaye diye' or 'negative udhar', mark:
      "clarification_needed": true,
      "clarification_question": "Negative amount contradiction: Did the customer pay or take credit? Please clarify."
-3. SPEECH CORRECTIONS:
+4. SPEECH CORRECTIONS:
    - If a speech recognition typo is normalized (e.g. 'ramesh kumr' -> 'Ramesh Kumar', 'chini' -> 'Sugar'), state it in "normalization" { "corrected": true, "reason": "..." }.
    - If the correction changes financial meaning, mark "requires_confirmation": true.
-4. HALLUCINATION PREVENTION:
+5. HALLUCINATION PREVENTION:
    - NEVER invent customer names, amounts, or items.
    - For "clear_debt", extract the customer name in parameters {"customer_name": "..."}; the amount parameter should be omitted because the full remaining balance is automatically settled.
    - For "record_credit" or "record_payment", if customer name or amount is missing, mark "clarification_needed": true.

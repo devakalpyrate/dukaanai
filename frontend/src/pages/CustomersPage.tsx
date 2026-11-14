@@ -10,6 +10,10 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   CheckCircle2,
+  QrCode,
+  MessageSquare,
+  Copy,
+  ExternalLink,
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { Customer, Transaction } from '../types';
@@ -20,6 +24,11 @@ export const CustomersPage: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerTxns, setCustomerTxns] = useState<Transaction[]>([]);
   const [loadingTxns, setLoadingTxns] = useState(false);
+
+  const [storeUpiId, setStoreUpiId] = useState('');
+  const [storeShopName, setStoreShopName] = useState('');
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
@@ -32,6 +41,21 @@ export const CustomersPage: React.FC = () => {
 
   useEffect(() => {
     loadCustomers();
+    const fetchSettings = async () => {
+      const token = localStorage.getItem('dukaanai_token');
+      if (!token) return;
+      try {
+        const res = await fetch('/api/settings', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.settings?.upi_id) setStoreUpiId(data.settings.upi_id);
+          if (data.settings?.shop_name) setStoreShopName(data.settings.shop_name);
+        }
+      } catch {}
+    };
+    fetchSettings();
   }, []);
 
   const loadCustomers = async () => {
@@ -97,6 +121,56 @@ export const CustomersPage: React.FC = () => {
     } finally {
       setTxLoading(false);
     }
+  };
+
+  const handleSendWhatsApp = (c?: Customer) => {
+    const target = c || selectedCustomer;
+    if (!target) return;
+
+    if (!storeUpiId) {
+      alert('Please configure your Merchant UPI ID in Settings -> Payment & UPI Details before generating or sending payment links.');
+      return;
+    }
+
+    let phone = target.phone && target.phone !== 'N/A' ? target.phone.replace(/[^0-9]/g, '') : '';
+    if (!phone || phone.length < 10) {
+      const promptPhone = window.prompt(
+        `Enter 10-digit WhatsApp mobile number for ${target.name}:`,
+        phone || ''
+      );
+      if (!promptPhone) return;
+      phone = promptPhone.replace(/[^0-9]/g, '');
+      if (phone.length < 10) {
+        alert('Please enter a valid 10-digit mobile number.');
+        return;
+      }
+    }
+
+    const cleanPhone = phone.startsWith('91') && phone.length > 10 ? phone : `91${phone.slice(-10)}`;
+    const balance = target.balance || 0;
+    const displayName = storeShopName || 'Store';
+    const upiUri = `upi://pay?pa=${encodeURIComponent(storeUpiId)}&pn=${encodeURIComponent(displayName)}&am=${balance}&cu=INR&tn=KhataPayment`;
+    const qrImageUrl = `${window.location.origin}/api/payments/qr-code?data=${encodeURIComponent(upiUri)}`;
+
+    const message = 
+`*नमस्ते ${target.name} जी,* 🙏
+
+*${displayName}* से आपका खाता विवरण:
+💰 *कुल बकाया उधार:* *₹${balance.toLocaleString('en-IN')}*
+
+📲 *सीधे UPI (Google Pay / PhonePe / Paytm) से भुगतान लिंक:*
+${upiUri}
+
+🖼️ *बिल का QR कोड देखकर स्कैन करें:*
+${qrImageUrl}
+
+_UPI ID:_ \`${storeUpiId}\`
+
+धन्यवाद! 🙏
+*${displayName}*`;
+
+    const whatsappUrl = `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   const filtered = customers.filter((c) => {
@@ -168,7 +242,19 @@ export const CustomersPage: React.FC = () => {
                       </p>
                     </div>
 
-                    <div className="text-right shrink-0">
+                    <div className="text-right shrink-0 flex items-center gap-1.5">
+                      {hasBalance && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendWhatsApp(c);
+                          }}
+                          title={`Send WhatsApp bill of ₹${(c.balance || 0).toLocaleString('en-IN')} to ${c.name}`}
+                          className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white transition-all cursor-pointer"
+                        >
+                          <MessageSquare className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                       <span
                         className={`text-[11px] font-black px-2 py-0.5 rounded-full ${
                           hasBalance
@@ -204,16 +290,33 @@ export const CustomersPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setShowQrModal(true)}
+                    title="Show live UPI QR Code for instant scanning"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <QrCode className="w-3.5 h-3.5" /> Show QR
+                  </button>
+
+                  <button
+                    onClick={() => handleSendWhatsApp()}
+                    title="Send instant WhatsApp Khata bill and UPI QR link directly to customer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" /> Send on WhatsApp
+                  </button>
+
                   <button
                     onClick={() => setShowTxModal('credit')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 hover:bg-rose-500/25 text-xs font-bold transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 hover:bg-rose-500/25 text-xs font-bold transition-all cursor-pointer active:scale-95"
                   >
                     <ArrowUpRight className="w-3.5 h-3.5" /> + Add Udhaar
                   </button>
+
                   <button
                     onClick={() => setShowTxModal('payment')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25 text-xs font-bold transition-all cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 text-xs font-bold transition-all cursor-pointer active:scale-95"
                   >
                     <ArrowDownLeft className="w-3.5 h-3.5" /> ✓ Record Payment
                   </button>
@@ -345,7 +448,7 @@ export const CustomersPage: React.FC = () => {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Subham Dash"
+                  placeholder="e.g. Customer Name"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   className="w-full p-2.5 rounded-xl bg-neutral-900/60 border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[#F6B511]"
@@ -443,6 +546,95 @@ export const CustomersPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Live UPI QR Code Modal */}
+      {showQrModal && selectedCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass-card rounded-3xl p-6 w-full max-w-sm border border-[var(--border-color)] bg-[#12161F] text-center shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-left">
+                <div className="w-8 h-8 rounded-xl bg-[#FFD026] text-black font-extrabold flex items-center justify-center text-sm">
+                  द
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-white">Instant UPI QR Bill</h3>
+                  <p className="text-[11px] text-[var(--text-muted)]">{storeShopName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowQrModal(false)}
+                className="p-1 rounded-lg text-white/50 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="py-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                {selectedCustomer.name}'s Outstanding Bill
+              </span>
+              <p className="text-3xl font-black text-[#FFD026] mt-0.5">
+                ₹{(selectedCustomer.balance || 0).toLocaleString('en-IN')}
+              </p>
+            </div>
+
+            {/* Scannable QR Code */}
+            {storeUpiId ? (
+              <>
+                <div className="p-3 bg-white rounded-2xl mx-auto w-fit shadow-inner">
+                  <img
+                    src={`/api/payments/qr-code?data=${encodeURIComponent(
+                      `upi://pay?pa=${storeUpiId}&pn=${encodeURIComponent(storeShopName || 'Store')}&am=${selectedCustomer.balance || 0}&cu=INR&tn=KhataPayment`
+                    )}`}
+                    alt="Customer UPI QR Code"
+                    className="w-52 h-52 block mx-auto rounded-lg"
+                  />
+                </div>
+
+                <div className="text-[11px] text-[var(--text-muted)] space-y-1 bg-white/5 p-2.5 rounded-xl border border-white/5 font-mono">
+                  <div>UPI ID: <span className="text-white font-bold">{storeUpiId}</span></div>
+                  <div className="text-[10px] text-emerald-400">Scan using GPay &bull; PhonePe &bull; Paytm &bull; BHIM</div>
+                </div>
+              </>
+            ) : (
+              <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs space-y-2">
+                <p className="font-bold">No Merchant UPI ID Found in Database</p>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Please go to Settings &rarr; Payment &amp; UPI Details to enter your store UPI ID. It will be saved permanently in your database.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={() => handleSendWhatsApp()}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all cursor-pointer shadow-sm active:scale-95"
+              >
+                <MessageSquare className="w-4 h-4" /> Send WhatsApp
+              </button>
+              <button
+                onClick={() => {
+                  const upiUri = `upi://pay?pa=${storeUpiId}&pn=${encodeURIComponent(storeShopName)}&am=${selectedCustomer.balance || 0}&cu=INR&tn=KhataPayment`;
+                  navigator.clipboard.writeText(upiUri);
+                  setCopiedLink(true);
+                  setTimeout(() => setCopiedLink(false), 2000);
+                }}
+                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-all cursor-pointer active:scale-95 border border-white/10"
+              >
+                {copiedLink ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4" /> Copy UPI Link
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
