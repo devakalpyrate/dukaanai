@@ -14,10 +14,14 @@ message UnderstandIntentResponse {
   string action = 3;
   string parameters_json = 4;
   string entities_json = 5;
-  bool requires_confirmation = 6;
-  bool clarification_needed = 7;
-  string clarification_question = 8;
-  string error_message = 9;
+  string original_text = 6;
+  string normalized_text = 7;
+  string normalization_json = 8;
+  float confidence = 9;
+  bool requires_confirmation = 10;
+  bool clarification_needed = 11;
+  string clarification_question = 12;
+  string error_message = 13;
 }
 
 service LLMService {

@@ -8,31 +8,42 @@ def create_transaction(
     transaction_type: str,
     amount: float,
     description: str | None = None,
+    idempotency_key: str | None = None,
 ) -> int:
     result = execute_query(
         """
         INSERT INTO transactions
-            (shop_id, customer_id, type, amount, description)
-        VALUES (%s, %s, %s, %s, %s)
+            (shop_id, customer_id, type, amount, description, idempotency_key)
+        VALUES (%s, %s, %s, %s, %s, %s)
         """,
-        (shop_id, customer_id, transaction_type, amount, description),
+        (shop_id, customer_id, transaction_type, amount, description, idempotency_key),
     )
     return result["lastrowid"]
 
 def get_transaction_by_id(transaction_id: int) -> dict[str, Any] | None:
     return fetch_one(
         """
-        SELECT id, shop_id, customer_id, type, amount, description, created_at
+        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
         FROM transactions
         WHERE id = %s
         """,
         (transaction_id,),
     )
 
+def get_transaction_by_idempotency_key(shop_id: int, idempotency_key: str) -> dict[str, Any] | None:
+    return fetch_one(
+        """
+        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
+        FROM transactions
+        WHERE shop_id = %s AND idempotency_key = %s
+        """,
+        (shop_id, idempotency_key),
+    )
+
 def get_transactions_by_shop(shop_id: int) -> list[dict[str, Any]]:
     return fetch_all(
         """
-        SELECT id, shop_id, customer_id, type, amount, description, created_at
+        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
         FROM transactions
         WHERE shop_id = %s
         ORDER BY created_at DESC, id DESC
@@ -46,7 +57,7 @@ def get_transactions_by_customer(
 ) -> list[dict[str, Any]]:
     return fetch_all(
         """
-        SELECT id, shop_id, customer_id, type, amount, description, created_at
+        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
         FROM transactions
         WHERE shop_id = %s AND customer_id = %s
         ORDER BY created_at DESC, id DESC
@@ -60,6 +71,7 @@ def update_transaction(
     transaction_type: str | None = None,
     amount: float | None = None,
     description: str | None = None,
+    idempotency_key: str | None = None,
 ) -> bool:
     updates: list[str] = []
     params: list[Any] = []
@@ -75,6 +87,10 @@ def update_transaction(
     if description is not None:
         updates.append("description = %s")
         params.append(description)
+
+    if idempotency_key is not None:
+        updates.append("idempotency_key = %s")
+        params.append(idempotency_key)
 
     if not updates:
         return False
