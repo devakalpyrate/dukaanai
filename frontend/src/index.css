@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-primary: #060913;
+    --bg-secondary: #0a1128;
+    --electric-blue: #00d2ff;
+    --neon-cyan: #00f2fe;
+    --deep-violet: #7928ca;
+    --glow-purple: #9d4edd;
+  }
+
+  body {
+    background-color: #060913;
+    color: #f8fafc;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+  }
+}

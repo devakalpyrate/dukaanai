@@ -6,13 +6,24 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from app.authentication.auth import (
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 from app.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
 from app.models.ai import get_llm_client
 from app.models.voice import get_model_info, load_model, transcribe_audio
+from app.queries import shops as shop_queries
+from app.queries import user as user_queries
 from app.services.intent_executor import IntentExecutor
 
 logging.basicConfig(
@@ -21,7 +32,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("dukaanai")
 
-ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac"}
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".webm", ".weba"}
 MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 
 @asynccontextmanager
@@ -60,6 +71,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+static_dir = Path(__file__).resolve().parent / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+assets_dir = static_dir / "assets"
+assets_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+@app.get("/favicon.svg")
+def favicon_svg():
+    fav = static_dir / "favicon.svg"
+    if fav.exists():
+        return FileResponse(fav)
+    return FileResponse(static_dir / "index.html")
+
+@app.get("/assistant")
+def assistant_ui():
+    ui_file = static_dir / "index.html"
+    if ui_file.exists():
+        return FileResponse(ui_file)
+    return {"message": "DukaanAI Voice Assistant UI"}
 
 class TranscriptionResponse(BaseModel):
     success: bool
@@ -106,6 +138,164 @@ class ActionExecutionResponseModel(BaseModel):
     normalized_text: str = ""
     normalization_notes: Dict[str, Any] = Field(default_factory=dict)
 
+class RegisterPayload(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100)
+    email: str = Field(..., max_length=150)
+    password: str = Field(..., min_length=6, max_length=128)
+    shop_name: str = Field(..., min_length=2, max_length=100)
+
+class LoginPayload(BaseModel):
+    email: str
+    password: str
+
+class AuthResponse(BaseModel):
+    success: bool
+    access_token: str
+    token_type: str = "bearer"
+    user_id: int
+    name: str
+    email: str
+    shop_id: int
+    shop_name: str
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+def get_current_shop(credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)) -> Dict[str, Any]:
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        payload = decode_access_token(credentials.credentials)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid or expired authentication token: {exc}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    user_id = payload.get("sub")
+    shop_id = payload.get("shop_id")
+    if not user_id or not shop_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed token payload.",
+        )
+    
+    shop = shop_queries.get_shop_by_id(shop_id)
+    if not shop or shop["owner_id"] != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized shop access.",
+        )
+    
+    return {
+        "user_id": user_id,
+        "shop_id": shop_id,
+        "email": payload.get("email"),
+        "shop_name": shop["shop_name"],
+    }
+
+@app.post(
+    "/api/auth/register",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new Shop Owner and store",
+)
+def register_endpoint(payload: RegisterPayload):
+    clean_email = payload.email.strip().lower()
+    existing = user_queries.get_user_by_email(clean_email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is already registered. Please log in.",
+        )
+    
+    hashed_pwd = hash_password(payload.password)
+    user_id = user_queries.create_user(
+        name=payload.name.strip(),
+        email=clean_email,
+        password_hash=hashed_pwd,
+    )
+    
+    shop_id = shop_queries.create_shop(
+        owner_id=user_id,
+        shop_name=payload.shop_name.strip(),
+    )
+    
+    token = create_access_token({
+        "sub": user_id,
+        "shop_id": shop_id,
+        "email": clean_email,
+    })
+    
+    return AuthResponse(
+        success=True,
+        access_token=token,
+        user_id=user_id,
+        name=payload.name.strip(),
+        email=clean_email,
+        shop_id=shop_id,
+        shop_name=payload.shop_name.strip(),
+    )
+
+@app.post(
+    "/api/auth/login",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Log in as a Shop Owner",
+)
+def login_endpoint(payload: LoginPayload):
+    clean_email = payload.email.strip().lower()
+    user = user_queries.get_user_credentials_by_email(clean_email)
+    if not user or not verify_password(payload.password, user["password"]):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password.",
+        )
+    
+    user_id = user["id"]
+    shops = shop_queries.get_shops_by_owner(user_id)
+    if not shops:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No shop found for this shopkeeper account.",
+        )
+    
+    primary_shop = shops[0]
+    token = create_access_token({
+        "sub": user_id,
+        "shop_id": primary_shop["id"],
+        "email": clean_email,
+    })
+    
+    return AuthResponse(
+        success=True,
+        access_token=token,
+        user_id=user_id,
+        name=user["name"],
+        email=clean_email,
+        shop_id=primary_shop["id"],
+        shop_name=primary_shop["shop_name"],
+    )
+
+@app.get(
+    "/api/auth/me",
+    summary="Get current authenticated shop owner profile",
+)
+def get_current_user_profile(current_shop: Dict[str, Any] = Depends(get_current_shop)):
+    user = user_queries.get_user_by_id(current_shop["user_id"])
+    return {
+        "success": True,
+        "user": user,
+        "shop": {
+            "id": current_shop["shop_id"],
+            "name": current_shop["shop_name"],
+        },
+    }
+
 @app.get("/")
 def root():
     grpc_server = get_grpc_server_manager()
@@ -129,7 +319,8 @@ def health_check():
     summary="Transcribe audio file using SraVaani STT",
 )
 async def transcribe_audio_endpoint(
-    file: UploadFile = File(..., description="Audio file to transcribe (e.g., .wav, .mp3)")
+    file: UploadFile = File(..., description="Audio file to transcribe (e.g., .wav, .mp3)"),
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
 ):
     if not file.filename:
         raise HTTPException(
@@ -167,7 +358,26 @@ async def transcribe_audio_endpoint(
             )
 
         try:
-            result = transcribe_audio(temp_path)
+            target_path = temp_path
+            if ext in (".m4a", ".aac", ".webm", ".ogg", ".mp3"):
+                import subprocess
+                converted_path = temp_path.with_suffix(".wav")
+                try:
+                    subprocess.run(
+                        ["ffmpeg", "-y", "-i", str(temp_path), "-ar", "16000", "-ac", "1", str(converted_path)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        check=True,
+                    )
+                    target_path = converted_path
+                except Exception as conv_err:
+                    logger.warning("FFmpeg conversion fallback triggered: %s", conv_err)
+            result = transcribe_audio(target_path)
+            if target_path != temp_path and target_path.exists():
+                try:
+                    os.remove(target_path)
+                except Exception:
+                    pass
         except Exception as exc:
             logger.error("Transcription execution error: %s", exc)
             raise HTTPException(
@@ -197,13 +407,17 @@ async def transcribe_audio_endpoint(
     status_code=status.HTTP_200_OK,
     summary="Understand shopkeeper intent via gRPC LLM Service",
 )
-def understand_intent_endpoint(payload: UnderstandIntentPayload):
+def understand_intent_endpoint(
+    payload: UnderstandIntentPayload,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
     client = get_grpc_client()
     try:
+        verified_shop_id = current_shop["shop_id"]
         result = client.understand_intent(
             text=payload.text,
             context=payload.context or "",
-            shop_id=payload.shop_id or 1,
+            shop_id=verified_shop_id,
             timeout=25.0,
         )
         return UnderstandIntentResponseModel(**result)
@@ -220,11 +434,17 @@ def understand_intent_endpoint(payload: UnderstandIntentPayload):
     status_code=status.HTTP_200_OK,
     summary="Execute validated business logic from intent data with idempotency",
 )
-def execute_action_endpoint(payload: ExecuteActionPayload):
+def execute_action_endpoint(
+    payload: ExecuteActionPayload,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
     try:
         req_id = payload.request_id or str(uuid.uuid4())
+        intent_copy = dict(payload.intent_data)
+        intent_copy["shop_id"] = current_shop["shop_id"]
+        
         res = IntentExecutor.execute(
-            payload.intent_data,
+            intent_copy,
             confirmed=payload.confirmed or False,
             request_id=req_id,
         )
