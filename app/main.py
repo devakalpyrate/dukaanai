@@ -123,6 +123,9 @@ assets_dir = static_dir / "assets"
 assets_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+landing_dir = Path(__file__).resolve().parent.parent / "landing"
+if landing_dir.exists():
+    app.mount("/landing", StaticFiles(directory=str(landing_dir), html=True), name="landing")
 
 @app.get("/favicon.svg")
 def favicon_svg():
@@ -997,9 +1000,32 @@ def understand_intent_endpoint(
     current_shop: Dict[str, Any] = Depends(get_current_shop),
 ):
     enforce_rate_limit(request, category="intent", user_id=str(current_shop["user_id"]))
-    client = get_grpc_client()
     try:
         verified_shop_id = current_shop["shop_id"]
+        if os.getenv("VERCEL"):
+            from app.models.ai import GroqLLMClient
+            llm = GroqLLMClient()
+            contract = llm.understand_intent(
+                text=payload.text,
+                context=payload.context or None,
+                shop_id=verified_shop_id,
+            )
+            return UnderstandIntentResponseModel(
+                success=True,
+                intent=contract.intent,
+                action=contract.action,
+                parameters=contract.parameters,
+                entities=contract.entities,
+                original_text=contract.original_text,
+                normalized_text=contract.normalized_text,
+                normalization=contract.normalization,
+                confidence=float(contract.confidence),
+                requires_confirmation=contract.requires_confirmation,
+                clarification_needed=contract.clarification_needed,
+                clarification_question=contract.clarification_question,
+                error_message=None,
+            )
+        client = get_grpc_client()
         result = client.understand_intent(
             text=payload.text,
             context=payload.context or "",
