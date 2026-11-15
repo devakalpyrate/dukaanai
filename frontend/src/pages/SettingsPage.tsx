@@ -216,7 +216,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                 </div>
                 <div>
                   <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">
-                    Mobile Number (मोबाइल नंबर) <span className="text-[#E2452D] font-bold">*</span>
+                    Mobile Number <span className="text-[#E2452D] font-bold">*</span>
                   </label>
                   <input
                     type="tel"
@@ -245,7 +245,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Physical Shop Address / Location (शॉप का पता)</label>
+                  <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Physical Shop Address / Location</label>
                   <textarea
                     rows={3}
                     value={address}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Users, Mic, Package, ArrowLeftRight } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { AuthModal } from './components/AuthModal';
@@ -77,11 +78,17 @@ const getInitialPage = (initialUser: UserProfile | null): PageId => {
 export const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(getInitialUser);
   const [currentPage, setCurrentPage] = useState<PageId>(() => getInitialPage(getInitialUser()));
+  const [previousPage, setPreviousPage] = useState<PageId>('overview');
   const [docSubSection, setDocSubSection] = useState<string>(getInitialDocSection);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavigate = (page: PageId) => {
+    if (currentPage !== 'docs' && page === 'docs') {
+      setPreviousPage(currentPage);
+    }
     setCurrentPage(page);
+    setMobileMenuOpen(false);
     const targetPath = pagePathMap[page] || '/home';
     if (window.location.pathname !== targetPath) {
       window.history.pushState(null, '', targetPath);
@@ -202,14 +209,14 @@ export const App: React.FC = () => {
       case 'settings':
         return <SettingsPage user={user} onUpdateUser={handleUpdateUser} />;
       case 'docs':
-        return <DocsPage onBackToApp={() => handleNavigate('overview')} initialSection={docSubSection} />;
+        return <DocsPage onBackToApp={() => handleNavigate(previousPage || 'overview')} initialSection={docSubSection} />;
       default:
         return <OverviewPage onOpenVoice={() => handleNavigate('voice-assistant')} onNavigate={handleNavigate} />;
     }
   };
 
   if (currentPage === 'docs') {
-    return <DocsPage onBackToApp={() => handleNavigate('overview')} initialSection={docSubSection} />;
+    return <DocsPage onBackToApp={() => handleNavigate(previousPage || 'overview')} initialSection={docSubSection} />;
   }
 
   return (
@@ -231,6 +238,8 @@ export const App: React.FC = () => {
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
             shopName={user.shop_name}
+            mobileOpen={mobileMenuOpen}
+            onCloseMobileMenu={() => setMobileMenuOpen(false)}
           />
 
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -239,6 +248,7 @@ export const App: React.FC = () => {
               onNavigate={handleNavigate}
               onLogout={handleLogout}
               onOpenVoice={() => handleNavigate('voice-assistant')}
+              onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
             />
 
             <main
@@ -247,7 +257,7 @@ export const App: React.FC = () => {
                   ? 'overflow-hidden p-0 flex flex-col min-h-0 relative'
                   : currentPage === 'customers'
                   ? 'overflow-hidden p-3 md:p-4 flex flex-col min-h-0 relative'
-                  : 'overflow-y-auto p-4 md:p-6 lg:p-8 custom-scrollbar'
+                  : 'overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8 custom-scrollbar pb-20 md:pb-6'
               }`}
             >
               <div
@@ -260,6 +270,55 @@ export const App: React.FC = () => {
                 {renderCurrentPage()}
               </div>
             </main>
+
+            {/* Mobile Bottom Navigation Bar */}
+            <nav className="md:hidden h-16 border-t border-[var(--border-color)] bg-[#0E1217]/95 backdrop-blur-md px-2 flex items-center justify-around shrink-0 z-30">
+              <button
+                onClick={() => handleNavigate('overview')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'overview' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <LayoutDashboard className="w-5 h-5 mb-0.5" />
+                <span>Home</span>
+              </button>
+              <button
+                onClick={() => handleNavigate('customers')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'customers' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <Users className="w-5 h-5 mb-0.5" />
+                <span>Khata</span>
+              </button>
+              {/* Central Glowing Voice AI Mic FAB */}
+              <button
+                onClick={() => handleNavigate('voice-assistant')}
+                className="-mt-5 w-12 h-12 rounded-full bg-[#FFD026] text-black shadow-lg shadow-amber-500/30 border-2 border-[#1E232B] flex items-center justify-center cursor-pointer transition-transform active:scale-95"
+                title="Voice Assistant"
+                aria-label="Voice Assistant"
+              >
+                <Mic className="w-6 h-6 stroke-[2.4]" />
+              </button>
+              <button
+                onClick={() => handleNavigate('products')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'products' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <Package className="w-5 h-5 mb-0.5" />
+                <span>Products</span>
+              </button>
+              <button
+                onClick={() => handleNavigate('sales')}
+                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'sales' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <ArrowLeftRight className="w-5 h-5 mb-0.5" />
+                <span>Sales</span>
+              </button>
+            </nav>
           </div>
         </>
       )}

@@ -91,6 +91,8 @@ export interface Product {
   price: number;
   unit: string;
   stock: number;
+  quantity?: number;
+  total_value?: number;
   min_stock_alert: number;
   status: 'in_stock' | 'low_stock' | 'out_of_stock';
   last_restocked: string;

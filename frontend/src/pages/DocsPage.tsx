@@ -37,6 +37,8 @@ import {
   RotateCcw,
   Smartphone,
   CheckCheck,
+  Menu,
+  X,
 } from 'lucide-react';
 
 interface DocsPageProps {
@@ -69,6 +71,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({ onBackToApp, initialSection 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [historyDepth, setHistoryDepth] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const toggleCategory = (title: string) => {
@@ -162,6 +165,7 @@ export const DocsPage: React.FC<DocsPageProps> = ({ onBackToApp, initialSection 
   const selectSection = (id: DocSectionId) => {
     setActiveSection(id);
     setIsMarkdownView(false);
+    setMobileDrawerOpen(false);
 
     // Update URL bar and increment internal tab history depth
     const targetUrl = `/docs/${id}`;
@@ -173,23 +177,18 @@ export const DocsPage: React.FC<DocsPageProps> = ({ onBackToApp, initialSection 
 
   const handleBack = () => {
     if (historyDepth > 0) {
-      // Step backwards through the pages visited in this tab
+      // Step backwards through the pages visited in docs
       window.history.back();
     } else {
-      // Reached the very first page of this documentation tab:
-      // Close the tab so the user lands straight back on the main app tab
-      window.close();
-
-      // Fallback in case browser blocks window.close() (e.g. if opened without window.opener)
-      setTimeout(() => {
-        if (!window.closed) {
-          if (onBackToApp) {
-            onBackToApp();
-          } else {
-            window.location.href = '/home';
-          }
-        }
-      }, 150);
+      // Reached the entry point of documentation:
+      // Return smoothly to the main app in the same window/tab
+      if (onBackToApp) {
+        onBackToApp();
+      } else if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        window.location.href = '/home';
+      }
     }
   };
 
@@ -332,34 +331,45 @@ Components: Bodhan AI STT/TTS Cloud, Groq Indic Intent LLM, Local Python QR Code
       )}
 
       {/* Top Main Navbar */}
-      <header className="h-14 border-b border-[#1E232B] bg-[#0E1217]/95 backdrop-blur-md px-4 flex items-center justify-between shrink-0 z-40">
-        <div className="flex items-center gap-3">
+      <header className="h-14 border-b border-[#1E232B] bg-[#0E1217]/95 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between shrink-0 z-40 select-none">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          {/* Mobile Topics Drawer Button */}
           <button
-            onClick={handleBack}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-[#8B949E] hover:text-white transition-all cursor-pointer border border-white/5"
-            title={historyDepth > 0 ? "Previous Section" : "Close Docs & Return to App"}
+            onClick={() => setMobileDrawerOpen(true)}
+            className="md:hidden flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#FFD026] text-black text-xs font-black shrink-0 cursor-pointer shadow-xs active:scale-95"
+            title="Browse Documentation Topics"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>{historyDepth > 0 ? 'Back' : 'Back to App'}</span>
+            <BookOpen className="w-3.5 h-3.5" />
+            <span className="text-[11px]">Topics</span>
           </button>
 
           <button
+            onClick={handleBack}
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-[#8B949E] hover:text-white transition-all cursor-pointer border border-white/5 shrink-0"
+            title={historyDepth > 0 ? "Previous Section" : "Close Docs & Return to App"}
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{historyDepth > 0 ? 'Back' : 'Back to App'}</span>
+          </button>
+
+          {/* Desktop Sidebar Toggle */}
+          <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8B949E] hover:text-white transition-all cursor-pointer border border-white/5"
+            className="hidden md:flex p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#8B949E] hover:text-white transition-all cursor-pointer border border-white/5 shrink-0"
             title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             {isSidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4 text-[#FFD026]" />}
           </button>
 
-          <div className="flex items-center gap-2.5 pl-1">
-            <div className="w-8 h-8 rounded-lg bg-[#FFD026] text-black font-black text-lg flex items-center justify-center border border-[#E6B800] shadow-sm">
+          <div className="flex items-center gap-2 sm:gap-2.5 pl-0.5 sm:pl-1 min-w-0">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#FFD026] text-black font-black text-base sm:text-lg flex items-center justify-center border border-[#E6B800] shadow-sm shrink-0">
               द
             </div>
-            <div>
-              <span className="font-black text-sm tracking-tight text-white">
+            <div className="truncate">
+              <span className="font-black text-xs sm:text-sm tracking-tight text-white whitespace-nowrap">
                 Dukaan<span className="text-[#FFD026]">AI</span> Docs
               </span>
-              <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFD026]/10 text-[#FFD026] border border-[#FFD026]/20">
+              <span className="hidden lg:inline-block ml-2 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[#FFD026]/10 text-[#FFD026] border border-[#FFD026]/20">
                 v1.0 Production
               </span>
             </div>
@@ -367,32 +377,114 @@ Components: Bodhan AI STT/TTS Cloud, Groq Indic Intent LLM, Local Python QR Code
         </div>
 
         {/* Search & Ask AI */}
-        <div className="flex items-center gap-3">
-          <div className="relative w-56 sm:w-64">
-            <Search className="w-3.5 h-3.5 text-[#8B949E] absolute left-3 top-2.5" />
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <div className="relative w-28 xs:w-36 sm:w-56 md:w-64">
+            <Search className="w-3.5 h-3.5 text-[#8B949E] absolute left-2.5 top-2.5" />
             <input
               type="text"
-              placeholder="Search docs (Ctrl + K)..."
+              placeholder="Search docs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-[#161B22] border border-[#30363D] text-xs text-white placeholder-[#8B949E] focus:outline-none focus:border-[#FFD026]"
+              className="w-full pl-7 sm:pl-8 pr-2.5 py-1.5 rounded-lg bg-[#161B22] border border-[#30363D] text-xs text-white placeholder-[#8B949E] focus:outline-none focus:border-[#FFD026]"
             />
           </div>
 
           <button
             onClick={() => setShowAiModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-[#FFD026]/30 text-[#FFD026] text-xs font-bold hover:bg-[#FFD026]/25 transition-all cursor-pointer shadow-xs"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-[#FFD026]/30 text-[#FFD026] text-xs font-bold hover:bg-[#FFD026]/25 transition-all cursor-pointer shadow-xs shrink-0"
           >
-            <Sparkles className="w-3.5 h-3.5 text-[#FFD026]" /> Ask AI
+            <Sparkles className="w-3.5 h-3.5 text-[#FFD026]" />
+            <span className="hidden xs:inline">Ask AI</span>
           </button>
         </div>
       </header>
 
       {/* Main Documentation Area */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Left Sidebar Navigation with Open/Close Collapsible System */}
+      <div className="flex-1 flex min-h-0 overflow-hidden relative">
+        {/* Mobile Slide-Over Topics Drawer */}
+        {mobileDrawerOpen && (
+          <div className="fixed inset-0 z-50 md:hidden">
+            <div
+              className="fixed inset-0 bg-black/75 backdrop-blur-xs transition-opacity animate-in fade-in"
+              onClick={() => setMobileDrawerOpen(false)}
+            />
+            <aside className="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-[#0E1217] border-r border-[#1E232B] shadow-2xl z-50 flex flex-col p-4 overflow-y-auto custom-scrollbar animate-in slide-in-from-left duration-200">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-[#1E232B] shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded bg-[#FFD026] text-black font-black text-xs flex items-center justify-center">
+                    द
+                  </div>
+                  <span className="font-extrabold text-xs text-white uppercase tracking-wider">Docs Topics</span>
+                </div>
+                <button
+                  onClick={() => setMobileDrawerOpen(false)}
+                  className="p-1 rounded-lg text-[#8B949E] hover:text-white hover:bg-white/10 cursor-pointer"
+                  title="Close Topics Menu"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Categorized Topic List in Mobile Drawer */}
+              <div className="space-y-4">
+                {navCategories.map((cat) => {
+                  const matchedItems = cat.items.filter((item) =>
+                    item.label.toLowerCase().includes(searchQuery.toLowerCase())
+                  );
+                  if (searchQuery && matchedItems.length === 0) return null;
+                  const isCollapsed = Boolean(collapsedCategories[cat.title] && !searchQuery);
+
+                  return (
+                    <div key={cat.title} className="space-y-1">
+                      <button
+                        onClick={() => toggleCategory(cat.title)}
+                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 text-[11px] font-extrabold uppercase tracking-wider text-[#8B949E] hover:text-white cursor-pointer transition-colors"
+                      >
+                        <span className="truncate">{cat.title}</span>
+                        <ChevronDown
+                          className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                            isCollapsed ? '-rotate-90 text-[#8B949E]' : 'rotate-0 text-[#FFD026]'
+                          }`}
+                        />
+                      </button>
+
+                      {!isCollapsed && (
+                        <div className="space-y-0.5">
+                          {(searchQuery ? matchedItems : cat.items).map((item) => {
+                            const Icon = item.icon;
+                            const isActive = activeSection === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => selectSection(item.id as DocSectionId)}
+                                className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer text-left ${
+                                  isActive
+                                    ? 'bg-[#FFD026] text-black font-black shadow-sm'
+                                    : 'text-[#8B949E] hover:text-[#E6EDF3] hover:bg-white/5'
+                                }`}
+                              >
+                                <Icon
+                                  className={`w-4 h-4 shrink-0 ${
+                                    isActive ? 'text-black' : 'text-[#8B949E]'
+                                  }`}
+                                />
+                                <span className="truncate flex-1">{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {/* Desktop Left Sidebar Navigation */}
         {isSidebarOpen && (
-          <aside className="w-64 border-r border-[#1E232B] bg-[#0B0E14] flex flex-col shrink-0 overflow-y-auto custom-scrollbar p-3 animate-in fade-in slide-in-from-left-2 duration-150">
+          <aside className="hidden md:flex w-64 border-r border-[#1E232B] bg-[#0B0E14] flex-col shrink-0 overflow-y-auto custom-scrollbar p-3 animate-in fade-in slide-in-from-left-2 duration-150">
             <div className="space-y-4">
               {navCategories.map((cat) => {
                 const matchedItems = cat.items.filter((item) =>
@@ -449,11 +541,31 @@ Components: Bodhan AI STT/TTS Cloud, Groq Indic Intent LLM, Local Python QR Code
         )}
 
         {/* Center Content Area */}
-        <main className="flex-1 overflow-y-auto custom-scrollbar px-6 sm:px-12 py-8 bg-[#090B0E]">
-          <div className="max-w-4xl mx-auto space-y-8">
+        <main className="flex-1 overflow-y-auto custom-scrollbar px-4 sm:px-8 md:px-12 py-6 sm:py-8 bg-[#090B0E]">
+          <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
+            {/* Mobile Topic Quick Switcher Banner */}
+            <div className="md:hidden flex items-center justify-between p-3 rounded-xl bg-[#12161F] border border-[#1E232B] shadow-xs">
+              <div className="flex items-center gap-2 min-w-0 pr-2">
+                <BookOpen className="w-4 h-4 text-[#FFD026] shrink-0" />
+                <div className="truncate text-left">
+                  <span className="text-[10px] text-[#8B949E] block uppercase font-bold">Topic</span>
+                  <span className="text-xs font-black text-white truncate block">
+                    {navCategories.flatMap(c => c.items).find(i => i.id === activeSection)?.label || activeSection}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setMobileDrawerOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#FFD026] text-black text-xs font-black shrink-0 cursor-pointer shadow-xs active:scale-95"
+              >
+                <span>Browse Topics</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
             {/* Breadcrumb & Action Pill */}
-            <div className="flex items-center justify-between text-xs text-[#8B949E] border-b border-[#1E232B] pb-3">
-              <div className="flex items-center gap-1.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-[#8B949E] border-b border-[#1E232B] pb-3">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 <span>Documentation</span>
                 <ChevronRight className="w-3.5 h-3.5" />
                 <span className="text-[#FFD026] font-bold">
@@ -462,7 +574,7 @@ Components: Bodhan AI STT/TTS Cloud, Groq Indic Intent LLM, Local Python QR Code
               </div>
 
               {/* Action Buttons: Copy link | View as Markdown */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button
                   onClick={copyCurrentPageMarkdown}
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] text-[#8B949E] hover:text-white cursor-pointer transition-colors border border-white/5"
@@ -731,8 +843,8 @@ def generate_qr_code_endpoint(data: str = Query(..., description="URI to encode"
                     </div>
 
                     {/* Latency Comparison Table */}
-                    <div className="rounded-xl border border-[#1E232B] overflow-hidden bg-[#12161F]">
-                      <table className="w-full text-left text-xs border-collapse">
+                    <div className="rounded-xl border border-[#1E232B] overflow-x-auto custom-scrollbar bg-[#12161F]">
+                      <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                         <thead>
                           <tr className="border-b border-[#1E232B] bg-[#161B22] text-[#8B949E]">
                             <th className="p-3 font-bold">Metric</th>
@@ -790,7 +902,7 @@ def generate_qr_code_endpoint(data: str = Query(..., description="URI to encode"
                           </span>
                           Bodhan Indic STT (app/models/voice.py)
                         </div>
-                        <pre className="ml-7 p-3 bg-[#090B0E] rounded-lg text-emerald-400 font-mono text-[11px] overflow-x-auto">
+                        <pre className="ml-0 sm:ml-7 p-3 bg-[#090B0E] rounded-lg text-emerald-400 font-mono text-[11px] overflow-x-auto">
 {`resp = requests.post(
     "https://api.bodhan.ai/v1/audio/transcriptions",
     headers={"Authorization": f"Bearer {os.getenv('BANDHON_AI_STT_API_KEY')}"},
@@ -809,7 +921,7 @@ recognized_text = resp.json()["text"]`}
                           </span>
                           Bodhan Indic TTS Response (app/models/tts.py)
                         </div>
-                        <pre className="ml-7 p-3 bg-[#090B0E] rounded-lg text-amber-300 font-mono text-[11px] overflow-x-auto">
+                        <pre className="ml-0 sm:ml-7 p-3 bg-[#090B0E] rounded-lg text-amber-300 font-mono text-[11px] overflow-x-auto">
 {`resp = requests.post(
     "https://api.bodhan.ai/v1/audio/speech",
     headers={"Authorization": f"Bearer {os.getenv('BANDHON_AI_TTS_API_KEY')}"},
@@ -913,8 +1025,8 @@ return Response(content=resp.content, media_type="audio/wav")`}
                       <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B949E]">
                         Intent Action Taxonomy
                       </h3>
-                      <div className="rounded-xl border border-[#1E232B] overflow-hidden bg-[#12161F]">
-                        <table className="w-full text-left text-xs border-collapse">
+                      <div className="rounded-xl border border-[#1E232B] overflow-x-auto custom-scrollbar bg-[#12161F]">
+                        <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                           <thead>
                             <tr className="border-b border-[#1E232B] bg-[#161B22] text-[#8B949E]">
                               <th className="p-3 font-bold">Action Key</th>
@@ -1011,8 +1123,8 @@ return Response(content=resp.content, media_type="audio/wav")`}
                       <h3 className="text-xs font-bold uppercase tracking-wider text-[#8B949E]">
                         Platform Architecture Matrix
                       </h3>
-                      <div className="rounded-xl border border-[#1E232B] overflow-hidden bg-[#12161F]">
-                        <table className="w-full text-left text-xs border-collapse">
+                      <div className="rounded-xl border border-[#1E232B] overflow-x-auto custom-scrollbar bg-[#12161F]">
+                        <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                           <thead>
                             <tr className="border-b border-[#1E232B] bg-[#161B22] text-[#8B949E]">
                               <th className="p-3 font-bold">Feature Layer</th>

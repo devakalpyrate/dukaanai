@@ -30,10 +30,20 @@ def get_product_by_id(product_id: int) -> dict[str, Any] | None:
 def get_products_by_shop(shop_id: int) -> list[dict[str, Any]]:
     return fetch_all(
         """
-        SELECT id, shop_id, name, price, unit
-        FROM products
-        WHERE shop_id = %s
-        ORDER BY name, id
+        SELECT
+            p.id,
+            p.shop_id,
+            p.name,
+            p.price,
+            p.unit,
+            COALESCE(i.quantity, 0.00) AS stock,
+            COALESCE(i.quantity, 0.00) AS quantity,
+            COALESCE(i.low_stock_limit, 5.00) AS low_stock_limit,
+            ROUND(COALESCE(i.quantity, 0.00) * p.price, 2) AS total_value
+        FROM products AS p
+        LEFT JOIN inventory AS i ON i.product_id = p.id AND i.shop_id = p.shop_id
+        WHERE p.shop_id = %s
+        ORDER BY p.name, p.id
         """,
         (shop_id,),
     )

@@ -51,8 +51,10 @@ def get_inventory_by_shop(shop_id: int) -> list[dict[str, Any]]:
             i.product_id,
             p.name AS product_name,
             p.unit,
+            p.price AS price_per_unit,
             i.quantity,
-            i.low_stock_limit
+            i.low_stock_limit,
+            ROUND(i.quantity * p.price, 2) AS total_value
         FROM inventory AS i
         JOIN products AS p ON p.id = i.product_id
         WHERE i.shop_id = %s

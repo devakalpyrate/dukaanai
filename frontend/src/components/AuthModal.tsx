@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, ShieldCheck, ArrowLeft, KeyRound, Store, MapPin, Phone, Mail, User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Eye, EyeOff, ShieldCheck, ArrowLeft, KeyRound, Store, MapPin, Phone, Mail, User, Sparkles, X } from 'lucide-react';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -61,6 +61,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
 
   const [errorMsg, setErrorMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [otpToast, setOtpToast] = useState<{ message: string; sub?: string } | null>(null);
+  const toastTimerRef = useRef<any>(null);
+
+  const showOtpNotice = (message: string, sub?: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setOtpToast({ message, sub });
+    toastTimerRef.current = setTimeout(() => {
+      setOtpToast(null);
+    }, 4500);
+  };
 
   const [khataList, setKhataList] = useState<KhataEntry[]>(KHATA_FEED.slice(0, 3));
   const [voiceLine, setVoiceLine] = useState<string>(VOICE_SAYS[0]);
@@ -114,6 +124,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
       setLoginGeneratedOtp(code);
       setLoginOtp(code);
       setLoginOtpSent(true);
+      showOtpNotice(
+        '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
+        'This is a prototype mode for temporary test use only.'
+      );
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to send code.');
     } finally {
@@ -215,6 +229,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
       setSystemSender(data.sent_from || 'dukaanai@india');
       setRegStep('otp');
       setOtpInput('');
+      showOtpNotice(
+        '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
+        'This is a prototype mode for temporary test use only.'
+      );
     } catch (err: any) {
       setErrorMsg(err.message || 'Error sending confirmation code. Please try again.');
     } finally {
@@ -503,6 +521,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
               </div>
             )}
 
+            {/* Temporary Prototype OTP Notification (Auto-dismisses in 4.5s) */}
+            {otpToast && (
+              <div className="p-3 mb-4 text-xs rounded-xl bg-amber-500/15 border border-[#FFD026]/40 text-[#FFD026] flex items-center justify-between gap-2 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Sparkles className="w-4 h-4 shrink-0 text-[#FFD026]" />
+                  <div className="text-left">
+                    <p className="font-bold text-xs text-white leading-snug">{otpToast.message}</p>
+                    {otpToast.sub && (
+                      <p className="text-[11px] text-amber-300/80 leading-snug mt-0.5">{otpToast.sub}</p>
+                    )}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOtpToast(null)}
+                  className="p-1 rounded-md text-[#A1A1AA] hover:text-white cursor-pointer transition-colors shrink-0"
+                  title="Dismiss notification"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* TAB 1: LOGIN FORM */}
             {tab === 'login' && (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
@@ -592,8 +633,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                     <button
                       type="button"
                       onClick={() => {
-                        setLoginMethod(loginMethod === 'password' ? 'otp' : 'password');
+                        const nextMethod = loginMethod === 'password' ? 'otp' : 'password';
+                        setLoginMethod(nextMethod);
                         setErrorMsg('');
+                        if (nextMethod === 'otp') {
+                          showOtpNotice(
+                            '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
+                            'This is a prototype mode for temporary test use only.'
+                          );
+                        }
                       }}
                       className="text-[#FFD026] font-bold hover:underline cursor-pointer"
                     >
@@ -644,7 +692,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                       <div className="space-y-3">
                         {loginGeneratedOtp && (
                           <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1">
-                            <span className="text-[10px] uppercase font-bold text-amber-300">Your Login Code:</span>
+                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
+                              <span className="uppercase">Your Login Code:</span>
+                              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Demo / Test Only</span>
+                            </div>
                             <div className="text-xl font-mono font-black text-[#FFD026] tracking-widest select-all">
                               {loginGeneratedOtp}
                             </div>
@@ -932,7 +983,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                     <span className="flex items-center gap-1">
                       <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Confirmation Code
                     </span>
-                    <span className="font-mono text-[10px] text-amber-400">{systemSender}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Demo / Test Only</span>
+                      <span className="font-mono text-[10px] text-amber-400">{systemSender}</span>
+                    </div>
                   </div>
                   <div className="text-2xl font-black tracking-widest text-[#FFD026] font-mono select-all">
                     {generatedOtp}

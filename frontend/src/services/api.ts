@@ -203,23 +203,30 @@ export const ApiService = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return (json.data || []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        category: 'General Kirana',
-        price: Number(p.price) || 0,
-        unit: p.unit || 'unit',
-        stock: 0,
-        min_stock_alert: 5,
-        status: 'in_stock',
-        last_restocked: 'Recorded',
-      }));
+      return (json.data || []).map((p: any) => {
+        const stockQty = Number(p.stock ?? p.quantity) || 0;
+        const pricePerUnit = Number(p.price) || 0;
+        const lowStock = Number(p.low_stock_limit) || 5;
+        return {
+          id: p.id,
+          name: p.name,
+          category: 'General Kirana',
+          price: pricePerUnit,
+          unit: p.unit || 'kg',
+          stock: stockQty,
+          quantity: stockQty,
+          total_value: Number(p.total_value) || Math.round(stockQty * pricePerUnit * 100) / 100,
+          min_stock_alert: lowStock,
+          status: stockQty <= 0 ? 'out_of_stock' : stockQty <= lowStock ? 'low_stock' : 'in_stock',
+          last_restocked: 'Recorded',
+        };
+      });
     } catch {
       return [];
     }
   },
 
-  addProduct: async (product: { name: string; category?: string; price: number; unit?: string }): Promise<Product | null> => {
+  addProduct: async (product: { name: string; category?: string; price: number; unit: string; quantity?: number; low_stock_limit?: number }): Promise<Product | null> => {
     try {
       const res = await fetch(`${API_BASE}/api/products`, {
         method: 'POST',
@@ -227,25 +234,62 @@ export const ApiService = {
         body: JSON.stringify({
           name: product.name,
           price: product.price,
-          unit: product.unit || 'unit',
+          unit: product.unit,
+          quantity: product.quantity ?? 0,
+          low_stock_limit: product.low_stock_limit ?? 5,
         }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Failed to save product');
+      }
       const json = await res.json();
       const p = json.data;
+      const stockQty = Number(p.quantity ?? p.stock) || 0;
+      const pricePerUnit = Number(p.price) || 0;
       return {
         id: p.id,
         name: p.name,
         category: product.category || 'General Kirana',
-        price: Number(p.price) || 0,
-        unit: p.unit || 'unit',
-        stock: 0,
+        price: pricePerUnit,
+        unit: p.unit || 'kg',
+        stock: stockQty,
+        quantity: stockQty,
+        total_value: Number(p.total_value) || Math.round(stockQty * pricePerUnit * 100) / 100,
         min_stock_alert: 5,
-        status: 'in_stock',
+        status: stockQty <= 0 ? 'out_of_stock' : 'in_stock',
         last_restocked: 'Just now',
       };
+    } catch (err: any) {
+      throw err;
+    }
+  },
+
+  markNotificationsBatchRead: async (notificationIds: number[]): Promise<boolean> => {
+    if (!notificationIds.length) return true;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/batch-read`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ notification_ids: notificationIds }),
+      });
+      return res.ok;
     } catch {
-      return null;
+      return false;
+    }
+  },
+
+  dismissNotificationsBatch: async (notificationIds: number[]): Promise<boolean> => {
+    if (!notificationIds.length) return true;
+    try {
+      const res = await fetch(`${API_BASE}/api/notifications/batch-dismiss`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ notification_ids: notificationIds }),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   },
 

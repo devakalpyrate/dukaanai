@@ -125,11 +125,26 @@ class CustomerService:
 
 class ProductService:
     @staticmethod
-    def add_product(shop_id: int, name: str, price: Any, unit: Optional[str] = None) -> dict:
+    def add_product(
+        shop_id: int,
+        name: str,
+        price: Any,
+        unit: Optional[str] = None,
+        quantity: Any = 0,
+        low_stock_limit: Any = 5,
+    ) -> dict:
         ShopVerificationService.verify_shop_exists(shop_id)
         v_name = validate_string(name, "product_name", max_length=100, required=True)
         v_price = validate_decimal(price, "price", min_value=Decimal("0.00"), allow_zero=True)
         v_unit = validate_string(unit, "unit", max_length=20, required=False)
+
+        if v_unit:
+            clean_unit = v_unit.strip()
+            if any(char.isdigit() for char in clean_unit):
+                raise ValidationError("Unit must contain only characters/letters (e.g. kg, liter, packet), numbers are not allowed.")
+
+        v_quantity = validate_decimal(quantity, "quantity", min_value=Decimal("0.00"), allow_zero=True) if quantity is not None else Decimal("0.00")
+        v_limit = validate_decimal(low_stock_limit, "low_stock_limit", min_value=Decimal("0.00"), allow_zero=True) if low_stock_limit is not None else Decimal("5.00")
 
         conn = db_connection.get_connection()
         try:
@@ -140,11 +155,20 @@ class ProductService:
                 )
                 prod_id = cur.lastrowid
                 cur.execute(
-                    "INSERT INTO inventory (shop_id, product_id, quantity, low_stock_limit) VALUES (%s, %s, 0.00, 0.00)",
-                    (shop_id, prod_id),
+                    "INSERT INTO inventory (shop_id, product_id, quantity, low_stock_limit) VALUES (%s, %s, %s, %s)",
+                    (shop_id, prod_id, float(v_quantity), float(v_limit)),
                 )
             conn.commit()
-            return {"id": prod_id, "shop_id": shop_id, "name": v_name, "price": str(v_price), "unit": v_unit}
+            return {
+                "id": prod_id,
+                "shop_id": shop_id,
+                "name": v_name,
+                "price": str(v_price),
+                "unit": v_unit,
+                "quantity": float(v_quantity),
+                "stock": float(v_quantity),
+                "total_value": float(round(v_quantity * v_price, 2)),
+            }
         except Exception:
             conn.rollback()
             raise

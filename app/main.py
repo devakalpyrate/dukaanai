@@ -227,6 +227,9 @@ class NotificationPayload(BaseModel):
     message: str = Field(..., min_length=1, max_length=1000)
     type: Optional[str] = Field(default="info", max_length=50)
 
+class NotificationBatchPayload(BaseModel):
+    notification_ids: list[int] = Field(default_factory=list)
+
 class AuthResponse(BaseModel):
     success: bool
     access_token: str
@@ -378,6 +381,24 @@ def register_endpoint(request: Request, payload: RegisterPayload):
         shop_name=payload.shop_name.strip(),
         shop_address=(payload.address or "").strip(),
     )
+
+    try:
+        notification_queries.create_notification(
+            shop_id=shop_id,
+            user_id=user_id,
+            title="Welcome to DukaanAI!",
+            message="Your voice khata and digital ledger are active. You can record transactions with voice or keyboard.",
+            notification_type="system",
+        )
+        notification_queries.create_notification(
+            shop_id=shop_id,
+            user_id=user_id,
+            title="Digital QR & UPI Ready",
+            message="Your store QR code is ready to receive instant payments from customers.",
+            notification_type="payment",
+        )
+    except Exception:
+        pass
     
     token = create_access_token({
         "sub": user_id,
@@ -565,25 +586,8 @@ def get_notifications_endpoint(
 ):
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
-    user_id = current_shop["user_id"]
     notifs = notification_queries.get_notifications_by_shop(shop_id)
-    if not notifs:
-        notification_queries.create_notification(
-            shop_id=shop_id,
-            user_id=user_id,
-            title="DukaanAI System Active",
-            message="Welcome to your AI Kirana store! Voice ledger and MySQL database are ready.",
-            notification_type="system",
-        )
-        notification_queries.create_notification(
-            shop_id=shop_id,
-            user_id=user_id,
-            title="Payment & UPI Ready",
-            message="Your shop settings and UPI configuration are linked to your database.",
-            notification_type="payment",
-        )
-        notifs = notification_queries.get_notifications_by_shop(shop_id)
-    return {"success": True, "notifications": notifs}
+    return {"success": True, "notifications": notifs or []}
 
 @app.post(
     "/api/notifications",
@@ -598,13 +602,23 @@ def create_notification_endpoint(
     enforce_rate_limit(request, category="intent", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
     user_id = current_shop["user_id"]
+    title = payload.title.strip()
+    msg = payload.message.strip()
+    forbidden_terms = ["mysql", "postgresql", "sqlite", "database", "schema", "table", "fastapi", "uvicorn", "gunicorn", "backend", "architecture", "endpoint"]
+    for term in forbidden_terms:
+        if term in title.lower() or term in msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Notification content cannot contain internal system or technical architecture terms.",
+            )
     nid = notification_queries.create_notification(
         shop_id=shop_id,
         user_id=user_id,
-        title=payload.title.strip(),
-        message=payload.message.strip(),
+        title=title,
+        message=msg,
         notification_type=(payload.type or "info").strip(),
     )
+    return {"success": True, "notification_id": nid, "message": "Notification saved to database."}
     return {"success": True, "notification_id": nid, "message": "Notification saved to database."}
 
 @app.delete(
@@ -638,6 +652,52 @@ def clear_notifications_endpoint(
     shop_id = current_shop["shop_id"]
     notification_queries.clear_all_notifications(shop_id)
     return {"success": True, "message": "All notifications cleared from database."}
+
+@app.patch(
+    "/api/notifications/{notification_id}/read",
+    summary="Mark single notification as read",
+)
+def mark_single_read_endpoint(
+    notification_id: int,
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
+    shop_id = current_shop["shop_id"]
+    notification_queries.mark_notification_read(shop_id, notification_id)
+    return {"success": True, "message": "Notification marked as read in database."}
+
+@app.post(
+    "/api/notifications/batch-read",
+    summary="High-scale bulk mark notifications as read",
+)
+def batch_read_notifications_endpoint(
+    request: Request,
+    payload: NotificationBatchPayload,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
+    shop_id = current_shop["shop_id"]
+    clean_ids = list({int(nid) for nid in payload.notification_ids if isinstance(nid, int) and nid > 0})
+    if clean_ids:
+        notification_queries.batch_mark_read(shop_id, clean_ids)
+    return {"success": True, "updated_count": len(clean_ids)}
+
+@app.post(
+    "/api/notifications/batch-dismiss",
+    summary="High-scale bulk dismiss notifications",
+)
+def batch_dismiss_notifications_endpoint(
+    request: Request,
+    payload: NotificationBatchPayload,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
+    shop_id = current_shop["shop_id"]
+    clean_ids = list({int(nid) for nid in payload.notification_ids if isinstance(nid, int) and nid > 0})
+    if clean_ids:
+        notification_queries.batch_delete_notifications(shop_id, clean_ids)
+    return {"success": True, "dismissed_count": len(clean_ids)}
 
 @app.get("/api/status")
 def api_status():
@@ -955,7 +1015,14 @@ def create_product_endpoint(
     price = payload.get("price")
     if not name or price is None:
         raise HTTPException(status_code=400, detail="Product name and price are required.")
-    prod = ProductService.add_product(current_shop["shop_id"], name, price, payload.get("unit"))
+    prod = ProductService.add_product(
+        current_shop["shop_id"],
+        name,
+        price,
+        payload.get("unit"),
+        payload.get("quantity", 0),
+        payload.get("low_stock_limit", 5),
+    )
     return {"success": True, "data": prod}
 
 @app.get("/api/transactions")

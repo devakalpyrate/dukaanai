@@ -49,6 +49,46 @@ def clear_all_notifications(shop_id: int) -> bool:
     )
     return result["rowcount"] > 0
 
+def mark_notification_read(shop_id: int, notification_id: int) -> bool:
+    result = execute_query(
+        """
+        UPDATE notifications
+        SET is_read = 1
+        WHERE shop_id = %s AND id = %s
+        """,
+        (shop_id, notification_id),
+    )
+    return result["rowcount"] > 0
+
+def batch_mark_read(shop_id: int, notification_ids: list[int]) -> int:
+    if not notification_ids:
+        return 0
+    placeholders = ", ".join(["%s"] * len(notification_ids))
+    params = [shop_id] + list(notification_ids)
+    result = execute_query(
+        f"""
+        UPDATE notifications
+        SET is_read = 1
+        WHERE shop_id = %s AND id IN ({placeholders})
+        """,
+        tuple(params),
+    )
+    return result["rowcount"]
+
+def batch_delete_notifications(shop_id: int, notification_ids: list[int]) -> int:
+    if not notification_ids:
+        return 0
+    placeholders = ", ".join(["%s"] * len(notification_ids))
+    params = [shop_id] + list(notification_ids)
+    result = execute_query(
+        f"""
+        DELETE FROM notifications
+        WHERE shop_id = %s AND id IN ({placeholders})
+        """,
+        tuple(params),
+    )
+    return result["rowcount"]
+
 def mark_all_read(shop_id: int) -> bool:
     result = execute_query(
         """

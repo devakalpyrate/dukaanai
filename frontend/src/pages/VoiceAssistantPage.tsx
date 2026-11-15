@@ -700,7 +700,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
             /* Live User Speaking Caption */
             <div className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-2xl bg-black/75 dark:bg-black/85 backdrop-blur-md border border-rose-500/30 text-rose-400 font-semibold text-xs sm:text-sm shadow-lg animate-pulse">
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
-              <span>{transcript ? `"${transcript}"` : 'Listening... (बोलिए...)'}</span>
+              <span>{transcript ? `"${transcript}"` : 'Listening...'}</span>
             </div>
           ) : transcript ? (
             /* Last Recognized Command Caption */
@@ -905,7 +905,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
             {/* Quick Language Presets */}
             <div>
               <span className="text-[11px] font-bold text-[var(--text-muted)] block mb-1.5 uppercase tracking-wider">
-                Quick Language Presets (क्लिक करके टेस्ट करें):
+                Quick Language Presets (Click to test):
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {[
@@ -935,7 +935,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
             {/* Text Input Area */}
             <div>
               <label className="block text-xs font-bold text-[var(--text-primary)] mb-1">
-                Enter Text to Generate Speech (किसी भी भाषा में लिखें):
+                Enter Text to Generate Speech:
               </label>
               <textarea
                 rows={3}
