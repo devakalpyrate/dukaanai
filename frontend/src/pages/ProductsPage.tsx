@@ -101,7 +101,7 @@ export const ProductsPage: React.FC = () => {
         setShowAddModal(false);
       }
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save product into database.');
+      setFormError(err.message || 'Failed to save product.');
     }
   };
 
@@ -129,7 +129,7 @@ export const ProductsPage: React.FC = () => {
             Products &amp; Inventory
           </h2>
           <p className="text-xs text-[var(--text-muted)] mt-1">
-            Manage store inventory, stock quantities, units, and rates directly linked to database.
+            Manage store inventory, stock quantities, units, and rates.
           </p>
         </div>
 
@@ -207,11 +207,11 @@ export const ProductsPage: React.FC = () => {
       <div className="glass-card rounded-2xl p-4 sm:p-6 overflow-hidden">
         {loading ? (
           <div className="text-center py-12 text-[var(--text-muted)] text-xs">
-            Loading products from database...
+            Loading products...
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-12 text-[var(--text-muted)] text-xs">
-            {searchQuery ? 'No products found matching your search.' : 'No products found in database. Click "Add New Inventory Product" to add stock.'}
+            {searchQuery ? 'No products found matching your search.' : 'No products found. Click "Add New Inventory Product" to add stock.'}
           </div>
         ) : (
           <div className="overflow-x-auto custom-scrollbar">
@@ -300,7 +300,7 @@ export const ProductsPage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
               <div>
                 <h3 className="text-base font-black text-[var(--text-primary)]">Add New Inventory Product</h3>
-                <p className="text-[10px] text-[var(--text-muted)]">Save product and stock records to database</p>
+                <p className="text-[10px] text-[var(--text-muted)]">Save product and stock records</p>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}

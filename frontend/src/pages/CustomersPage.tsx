@@ -601,9 +601,9 @@ _UPI ID:_ \`${storeUpiId}\`
               </>
             ) : (
               <div className="p-6 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs space-y-2">
-                <p className="font-bold">No Merchant UPI ID Found in Database</p>
+                <p className="font-bold">No Merchant UPI ID Configured</p>
                 <p className="text-[11px] text-[var(--text-muted)]">
-                  Please go to Settings &rarr; Payment &amp; UPI Details to enter your store UPI ID. It will be saved permanently in your database.
+                  Please go to Settings &rarr; Payment &amp; UPI Details to enter your store UPI ID. It will be saved permanently to your store profile.
                 </p>
               </div>
             )}

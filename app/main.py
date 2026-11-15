@@ -520,7 +520,7 @@ def get_current_user_profile(
 
 @app.get(
     "/api/settings",
-    summary="Get shop and user settings from database",
+    summary="Get shop and user settings",
 )
 def get_settings_endpoint(
     request: Request,
@@ -545,7 +545,7 @@ def get_settings_endpoint(
 
 @app.put(
     "/api/settings",
-    summary="Update shop and user settings in database",
+    summary="Update shop and user settings",
 )
 def update_settings_endpoint(
     request: Request,
@@ -574,11 +574,11 @@ def update_settings_endpoint(
         shop_queries.update_shop(shop_id, shop_name=payload.shop_name.strip() if payload.shop_name else None, address=payload.shop_address.strip() if payload.shop_address else None)
     
     updated = settings_queries.get_settings_by_shop(shop_id)
-    return {"success": True, "settings": updated, "message": "Settings saved successfully to database."}
+    return {"success": True, "settings": updated, "message": "Settings saved successfully."}
 
 @app.get(
     "/api/notifications",
-    summary="Get all notifications for shop from database",
+    summary="Get all notifications for shop",
 )
 def get_notifications_endpoint(
     request: Request,
@@ -592,7 +592,7 @@ def get_notifications_endpoint(
 @app.post(
     "/api/notifications",
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new notification in database",
+    summary="Create a new notification",
 )
 def create_notification_endpoint(
     request: Request,
@@ -618,12 +618,11 @@ def create_notification_endpoint(
         message=msg,
         notification_type=(payload.type or "info").strip(),
     )
-    return {"success": True, "notification_id": nid, "message": "Notification saved to database."}
-    return {"success": True, "notification_id": nid, "message": "Notification saved to database."}
+    return {"success": True, "notification_id": nid, "message": "Notification created successfully."}
 
 @app.delete(
     "/api/notifications/{notification_id}",
-    summary="Delete a notification from database",
+    summary="Delete a notification",
 )
 def delete_notification_endpoint(
     notification_id: int,
@@ -638,11 +637,11 @@ def delete_notification_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Notification not found or already deleted.",
         )
-    return {"success": True, "message": "Notification deleted permanently from database."}
+    return {"success": True, "message": "Notification deleted permanently."}
 
 @app.delete(
     "/api/notifications",
-    summary="Clear all notifications for shop from database",
+    summary="Clear all notifications for shop",
 )
 def clear_notifications_endpoint(
     request: Request,
@@ -651,7 +650,7 @@ def clear_notifications_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
     notification_queries.clear_all_notifications(shop_id)
-    return {"success": True, "message": "All notifications cleared from database."}
+    return {"success": True, "message": "All notifications cleared."}
 
 @app.patch(
     "/api/notifications/{notification_id}/read",
@@ -665,7 +664,7 @@ def mark_single_read_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
     notification_queries.mark_notification_read(shop_id, notification_id)
-    return {"success": True, "message": "Notification marked as read in database."}
+    return {"success": True, "message": "Notification marked as read."}
 
 @app.post(
     "/api/notifications/batch-read",

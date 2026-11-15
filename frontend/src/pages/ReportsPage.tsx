@@ -177,9 +177,9 @@ export const ReportsPage: React.FC = () => {
               </h3>
               {transactions.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[var(--text-muted)]">
-                  No transactions recorded yet in store database.
+                  No transactions recorded yet.
                   <br />
-                  Speak or type transactions in Voice Assistant to see real audit trail.
+                  Speak or record transactions in Voice Assistant to see real audit trail.
                 </div>
               ) : (
                 <div className="space-y-2 overflow-y-auto max-h-[260px]">

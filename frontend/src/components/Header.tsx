@@ -363,7 +363,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {notifications.length === 0 ? (
                   <div className="py-6 text-center text-[var(--text-muted)] text-xs">
                     <p className="font-semibold">No new notifications</p>
-                    <p className="text-[10px] mt-0.5">Alerts & transactions will appear here automatically from database.</p>
+                    <p className="text-[10px] mt-0.5">Alerts & transactions will appear here automatically.</p>
                   </div>
                 ) : (
                   notifications.map((n) => (
