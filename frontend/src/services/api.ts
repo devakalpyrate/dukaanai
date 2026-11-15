@@ -1,4 +1,5 @@
 import { Customer, Product, Transaction, Supplier, PurchaseOrder, Invoice, AutomationTask, UserProfile } from '../types';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 const API_BASE = 'http://127.0.0.1:8000';
 
@@ -178,7 +179,10 @@ export const ApiService = {
         headers: getAuthHeaders(),
         body: JSON.stringify(customer),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(sanitizeErrorMessage(errJson, SAFE_MESSAGES.CUSTOMER_FAILED));
+      }
       const json = await res.json();
       const c = json.data;
       return {
@@ -191,8 +195,8 @@ export const ApiService = {
         last_transaction: 'Just now',
         status: 'cleared',
       };
-    } catch {
-      return null;
+    } catch (err: any) {
+      throw new Error(sanitizeErrorMessage(err, SAFE_MESSAGES.CUSTOMER_FAILED));
     }
   },
 
@@ -241,7 +245,7 @@ export const ApiService = {
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Failed to save product');
+        throw new Error(sanitizeErrorMessage(errData, SAFE_MESSAGES.PRODUCT_FAILED));
       }
       const json = await res.json();
       const p = json.data;

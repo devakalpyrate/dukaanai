@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Eye, EyeOff, ShieldCheck, ArrowLeft, KeyRound, Store, MapPin, Phone, Mail, User, Sparkles, X } from 'lucide-react';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -129,7 +130,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
         'This is a prototype mode for temporary test use only.'
       );
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to send code.');
+      setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.OTP_SEND_FAILED));
     } finally {
       setLoading(false);
     }
@@ -181,7 +182,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
 
       onSuccess(data);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Login failed.');
+      setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.LOGIN_FAILED));
     } finally {
       setLoading(false);
     }
@@ -234,7 +235,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
         'This is a prototype mode for temporary test use only.'
       );
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error sending confirmation code. Please try again.');
+      setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.OTP_SEND_FAILED));
     } finally {
       setLoading(false);
     }
@@ -290,7 +291,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
 
       onSuccess(data);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Verification failed. Please check the code.');
+      setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.REGISTRATION_FAILED));
     } finally {
       setLoading(false);
     }

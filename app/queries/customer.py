@@ -1,135 +1,132 @@
+from decimal import Decimal
 from typing import Any
-
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def create_customer(
     shop_id: int,
     name: str,
     phone: str | None = None,
 ) -> int:
-    result = execute_query(
-        """
-        INSERT INTO customers (shop_id, name, phone)
-        VALUES (%s, %s, %s)
-        """,
-        (shop_id, name, phone),
-    )
-    return result["lastrowid"]
+    client = get_supabase()
+    payload = {
+        "id": get_next_id("customers"),
+        "shop_id": shop_id,
+        "name": name,
+        "phone": phone
+    }
+    res = client.table("customers").insert(payload).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]["id"]
+    return 0
 
 def get_customer_by_id(customer_id: int, shop_id: int | None = None) -> dict[str, Any] | None:
+    client = get_supabase()
+    query = client.table("customers").select("id, shop_id, name, phone").eq("id", customer_id)
     if shop_id is not None:
-        return fetch_one(
-            """
-            SELECT id, shop_id, name, phone
-            FROM customers
-            WHERE id = %s AND shop_id = %s
-            """,
-            (customer_id, shop_id),
-        )
-    return fetch_one(
-        """
-        SELECT id, shop_id, name, phone
-        FROM customers
-        WHERE id = %s
-        """,
-        (customer_id,),
-    )
+        query = query.eq("shop_id", shop_id)
+    res = query.limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_customers_by_shop(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT id, shop_id, name, phone
-        FROM customers
-        WHERE shop_id = %s
-        ORDER BY name, id
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    res = client.table("customers").select("id, shop_id, name, phone").eq("shop_id", shop_id).order("name").order("id").execute()
+    return res.data or []
 
 def search_customers(
     shop_id: int,
     search_term: str,
 ) -> list[dict[str, Any]]:
-    pattern = f"%{search_term}%"
-    return fetch_all(
-        """
-        SELECT id, shop_id, name, phone
-        FROM customers
-        WHERE shop_id = %s
-          AND (name LIKE %s OR phone LIKE %s)
-        ORDER BY name, id
-        """,
-        (shop_id, pattern, pattern),
-    )
+    client = get_supabase()
+    term = search_term.strip()
+    res = client.table("customers").select("id, shop_id, name, phone").eq("shop_id", shop_id).or_(f"name.ilike.%{term}%,phone.ilike.%{term}%").order("name").order("id").execute()
+    return res.data or []
 
 def get_customers_with_balances_by_shop(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT 
-            c.id,
-            c.shop_id,
-            c.name,
-            COALESCE(c.phone, '') AS phone,
-            COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) AS total_credit,
-            COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) AS total_paid,
-            ROUND(
-                COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) -
-                COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00),
-                2
-            ) AS balance,
-            COUNT(t.id) AS transaction_count,
-            MAX(t.created_at) AS last_transaction,
-            CASE 
-                WHEN COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) > 0
-                THEN ROUND(
-                    (COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) / 
-                     SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END)) * 100, 
-                    2
-                )
-                ELSE 100.00
-            END AS recovery_percentage
-        FROM customers c
-        LEFT JOIN transactions t ON c.id = t.customer_id AND t.shop_id = c.shop_id
-        WHERE c.shop_id = %s
-        GROUP BY c.id, c.shop_id, c.name, c.phone
-        ORDER BY balance DESC, c.name ASC
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    c_res = client.table("customers").select("id, shop_id, name, phone").eq("shop_id", shop_id).execute()
+    customers = c_res.data or []
+    if not customers:
+        return []
+
+    t_res = client.table("transactions").select("id, customer_id, type, amount, created_at").eq("shop_id", shop_id).execute()
+    txs = t_res.data or []
+
+    tx_by_cust: dict[int, list[dict[str, Any]]] = {}
+    for t in txs:
+        cid = t.get("customer_id")
+        if cid not in tx_by_cust:
+            tx_by_cust[cid] = []
+        tx_by_cust[cid].append(t)
+
+    results = []
+    for c in customers:
+        cid = c["id"]
+        c_txs = tx_by_cust.get(cid, [])
+        total_credit = Decimal("0.00")
+        total_paid = Decimal("0.00")
+        last_tx = None
+        for t in c_txs:
+            amt = Decimal(str(t.get("amount") or "0.00"))
+            if t.get("type") == "credit":
+                total_credit += amt
+            elif t.get("type") == "payment":
+                total_paid += amt
+            t_created = t.get("created_at")
+            if t_created and (last_tx is None or t_created > last_tx):
+                last_tx = t_created
+
+        balance = round(total_credit - total_paid, 2)
+        recovery = round((total_paid / total_credit) * 100, 2) if total_credit > 0 else Decimal("100.00")
+        results.append({
+            "id": c["id"],
+            "shop_id": c["shop_id"],
+            "name": c["name"],
+            "phone": c.get("phone") or "",
+            "total_credit": total_credit,
+            "total_paid": total_paid,
+            "balance": balance,
+            "transaction_count": len(c_txs),
+            "last_transaction": last_tx,
+            "recovery_percentage": recovery,
+        })
+
+    results.sort(key=lambda x: (-x["balance"], x["name"]))
+    return results
 
 def get_customer_balance_in_db(shop_id: int, customer_id: int) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT 
-            c.id,
-            c.shop_id,
-            c.name,
-            COALESCE(c.phone, '') AS phone,
-            COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) AS total_credit,
-            COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) AS total_paid,
-            ROUND(
-                COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) -
-                COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00),
-                2
-            ) AS balance,
-            COUNT(t.id) AS transaction_count,
-            MAX(t.created_at) AS last_transaction,
-            CASE 
-                WHEN COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) > 0
-                THEN ROUND(
-                    (COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) / 
-                     SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END)) * 100, 
-                    2
-                )
-                ELSE 100.00
-            END AS recovery_percentage
-        FROM customers c
-        LEFT JOIN transactions t ON c.id = t.customer_id AND t.shop_id = c.shop_id
-        WHERE c.id = %s AND c.shop_id = %s
-        GROUP BY c.id, c.shop_id, c.name, c.phone
-        """,
-        (customer_id, shop_id),
-    )
+    cust = get_customer_by_id(customer_id, shop_id)
+    if not cust:
+        return None
+    client = get_supabase()
+    t_res = client.table("transactions").select("id, customer_id, type, amount, created_at").eq("shop_id", shop_id).eq("customer_id", customer_id).execute()
+    c_txs = t_res.data or []
+    total_credit = Decimal("0.00")
+    total_paid = Decimal("0.00")
+    last_tx = None
+    for t in c_txs:
+        amt = Decimal(str(t.get("amount") or "0.00"))
+        if t.get("type") == "credit":
+            total_credit += amt
+        elif t.get("type") == "payment":
+            total_paid += amt
+        t_created = t.get("created_at")
+        if t_created and (last_tx is None or t_created > last_tx):
+            last_tx = t_created
+
+    balance = round(total_credit - total_paid, 2)
+    recovery = round((total_paid / total_credit) * 100, 2) if total_credit > 0 else Decimal("100.00")
+    return {
+        "id": cust["id"],
+        "shop_id": cust["shop_id"],
+        "name": cust["name"],
+        "phone": cust.get("phone") or "",
+        "total_credit": total_credit,
+        "total_paid": total_paid,
+        "balance": balance,
+        "transaction_count": len(c_txs),
+        "last_transaction": last_tx,
+        "recovery_percentage": recovery,
+    }
 
 def update_customer(
     customer_id: int,
@@ -138,41 +135,24 @@ def update_customer(
     name: str | None = None,
     phone: str | None = None,
 ) -> bool:
-    updates: list[str] = []
-    params: list[Any] = []
-
+    client = get_supabase()
+    payload = {}
     if name is not None:
-        updates.append("name = %s")
-        params.append(name)
-
+        payload["name"] = name
     if phone is not None:
-        updates.append("phone = %s")
-        params.append(phone)
-
-    if not updates:
+        payload["phone"] = phone
+    if not payload:
         return False
-
-    params.append(customer_id)
-    where_clause = "WHERE id = %s"
+    query = client.table("customers").update(payload).eq("id", customer_id)
     if shop_id is not None:
-        where_clause += " AND shop_id = %s"
-        params.append(shop_id)
-
-    result = execute_query(
-        f"UPDATE customers SET {', '.join(updates)} {where_clause}",
-        tuple(params),
-    )
-    return result["rowcount"] > 0
+        query = query.eq("shop_id", shop_id)
+    res = query.execute()
+    return bool(res.data)
 
 def delete_customer(customer_id: int, shop_id: int | None = None) -> bool:
+    client = get_supabase()
+    query = client.table("customers").delete().eq("id", customer_id)
     if shop_id is not None:
-        result = execute_query(
-            "DELETE FROM customers WHERE id = %s AND shop_id = %s",
-            (customer_id, shop_id),
-        )
-    else:
-        result = execute_query(
-            "DELETE FROM customers WHERE id = %s",
-            (customer_id,),
-        )
-    return result["rowcount"] > 0
+        query = query.eq("shop_id", shop_id)
+    res = query.execute()
+    return bool(res.data)

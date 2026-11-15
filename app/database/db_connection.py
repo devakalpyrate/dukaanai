@@ -1,29 +1,9 @@
-import os
-from pathlib import Path
-import pymysql
-from dotenv import load_dotenv
+from app.database.supabase_client import get_supabase
 
-env_path =Path (__file__ ).resolve ().parent .parent .parent /".env"
-load_dotenv (dotenv_path =env_path )
+def get_connection():
+    return get_supabase()
 
-def get_connection ():
-    return pymysql .connect (
-    host =os .getenv ("DB_HOST"),
-    port =int (os .getenv ("DB_PORT",3306 )),
-    user =os .getenv ("DB_USER","root"),
-    password =os .getenv ("DB_PASSWORD"),
-    database =os .getenv ("DB_NAME"),
-    cursorclass =pymysql .cursors .DictCursor
-    )
-
-if __name__ =="__main__":
-    conn =get_connection ()
-    try :
-        with conn .cursor ()as cursor :
-            cursor .execute ("SELECT VERSION() AS version;")
-            print ("MySQL Version:",cursor .fetchone ()["version"])
-            cursor .execute ("SHOW TABLES;")
-            db_name =os .getenv ("DB_NAME")
-            print ("Tables:",[row [f"Tables_in_{db_name}"]for row in cursor .fetchall ()])
-    finally :
-        conn .close ()
+if __name__ == "__main__":
+    client = get_connection()
+    res = client.table("global_market_prices").select("count", count="exact").execute()
+    print("Supabase Connected! Total items in global_market_prices:", res.count)

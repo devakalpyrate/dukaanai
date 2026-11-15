@@ -1,9 +1,14 @@
+import re
 from decimal import Decimal
 from typing import Any, Dict, Optional
+from urllib.parse import quote
 from app.queries import customer as customer_queries
 from app.queries import notification as notification_queries
+from app.queries import product as product_queries
 from app.queries import shops as shop_queries
+from app.queries import supplier as supplier_queries
 from app.queries import transaction as transaction_queries
+from app.services.price_discovery import get_market_price
 from app.services.business_logic import (
     AmbiguousEntityError,
     BusinessLogicError,
@@ -18,6 +23,56 @@ from app.services.business_logic import (
 )
 from app.services.validators import NegativeContradictionError, ValidationError
 from app.services.language_detection import detect_language, get_localized_confirmation
+
+_pending_contexts: Dict[int, Dict[str, Any]] = {}
+
+class PendingContextManager:
+    @staticmethod
+    def get(shop_id: int) -> Optional[Dict[str, Any]]:
+        return _pending_contexts.get(shop_id)
+
+    @staticmethod
+    def set(shop_id: int, context_data: Dict[str, Any]) -> None:
+        _pending_contexts[shop_id] = context_data
+
+    @staticmethod
+    def clear(shop_id: int) -> None:
+        _pending_contexts.pop(shop_id, None)
+
+def parse_spoken_amount(text: str) -> Optional[Decimal]:
+    if not text:
+        return None
+    raw = text.strip()
+    match = re.search(r'(\d+(?:\.\d{1,2})?)', raw)
+    if match:
+        try:
+            return Decimal(match.group(1)).quantize(Decimal("0.01"))
+        except Exception:
+            pass
+    hindi_map = {
+        "ek": 1, "do": 2, "teen": 3, "char": 4, "paanch": 5, "panch": 5,
+        "das": 10, "bees": 20, "tees": 30, "chaalis": 40, "chalis": 40,
+        "pachaas": 50, "pachas": 50, "saath": 60, "sattar": 70, "assi": 80,
+        "nabbe": 90, "sau": 100, "hazaar": 1000, "hazar": 1000
+    }
+    for word, val in hindi_map.items():
+        if word in raw.lower().split():
+            return Decimal(val).quantize(Decimal("0.01"))
+    return None
+
+def sanitize_public_message(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    forbidden_terms = [
+        "mysql", "postgresql", "sqlite", "database", "schema", "table",
+        "fastapi", "uvicorn", "gunicorn", "backend", "architecture", "endpoint",
+        "grpc", "normaliz", "traceback", "exception", "deadlock", "internal error"
+    ]
+    lower = text.lower()
+    for term in forbidden_terms:
+        if term in lower:
+            return "Kripya dobara prayas karein ya jaankari spasht karein."
+    return text
 
 class ExecutionResult:
     def __init__(
@@ -38,14 +93,14 @@ class ExecutionResult:
         self.success = success
         self.action = action
         self.result = result
-        self.message = message
+        self.message = sanitize_public_message(message)
         self.clarification_needed = clarification_needed
-        self.clarification_question = clarification_question
+        self.clarification_question = sanitize_public_message(clarification_question) if clarification_question else None
         self.requires_confirmation = requires_confirmation
         self.original_text = original_text
         self.normalized_text = normalized_text
         self.normalization_notes = normalization_notes or {}
-        self.spoken_message = spoken_message or message
+        self.spoken_message = sanitize_public_message(spoken_message or message)
         self.detected_language = detected_language or "en"
 
     def to_dict(self) -> dict:
@@ -76,12 +131,36 @@ class IntentExecutor:
         norm_meta = intent_data.get("normalization", {}) or {}
 
         if intent_data.get("clarification_needed"):
+            cq = (
+                intent_data.get("clarification_question")
+                or (params.get("reply") if params else None)
+                or "Kripya spasht karein ki aap kya entry karna chahte hain."
+            )
             return ExecutionResult(
                 success=True,
                 action=action,
                 clarification_needed=True,
-                clarification_question=intent_data.get("clarification_question") or "Kripya spasht karein.",
-                message="Clarification requested by AI normalization.",
+                clarification_question=cq,
+                message=cq,
+                spoken_message=cq,
+                original_text=orig_text,
+                normalized_text=norm_text,
+                normalization_notes=norm_meta,
+            )
+
+        if intent == "conversation" or action in ("greet", "assist", "general_chat", "help"):
+            chat_reply = (
+                params.get("reply")
+                or intent_data.get("conversational_response")
+                or intent_data.get("clarification_question")
+                or "Namaste! Main DukaanAI hoon. Bataiye, aaj dukaan me kya entry karni hai ya kiska hisaab dekhna hai?"
+            )
+            return ExecutionResult(
+                success=True,
+                action=action or "greet",
+                result={"reply": chat_reply},
+                message=chat_reply,
+                spoken_message=chat_reply,
                 original_text=orig_text,
                 normalized_text=norm_text,
                 normalization_notes=norm_meta,
@@ -104,6 +183,42 @@ class IntentExecutor:
         except (EntityNotFoundError, ValidationError) as exc:
             return ExecutionResult(success=False, action=action, message=str(exc), original_text=orig_text)
 
+        pending = PendingContextManager.get(shop_id)
+        if pending and pending.get("action") == "awaiting_product_price":
+            ans_price = params.get("price") or params.get("amount") or parse_spoken_amount(orig_text) or parse_spoken_amount(norm_text)
+            if ans_price and Decimal(str(ans_price)) > Decimal("0.00"):
+                p_name = pending["product_name"]
+                qty_change = pending.get("quantity") or Decimal("1.00")
+                unit = pending.get("unit") or "unit"
+                v_price = Decimal(str(ans_price))
+                res_prod, _ = ProductService.resolve_or_create_product(
+                    shop_id=shop_id,
+                    product_name=p_name,
+                    price=v_price,
+                    unit=unit,
+                    auto_create=True,
+                )
+                if float(res_prod.get("price") or 0) != float(v_price):
+                    ProductService.update_product_price(shop_id, res_prod["id"], float(v_price))
+                adj = InventoryService.adjust_stock(
+                    shop_id=shop_id,
+                    product_id=res_prod["id"],
+                    quantity_change=qty_change,
+                    reason="voice_add_stock_with_price",
+                )
+                PendingContextManager.clear(shop_id)
+                spoken_msg = f"Theek hai, {p_name} ₹{float(v_price):,.2f} prati {unit} ke hisaab se {qty_change} {unit} stock me save kar diya gaya hai."
+                return ExecutionResult(
+                    success=True,
+                    action="add_product_price",
+                    result=adj,
+                    message=spoken_msg,
+                    spoken_message=spoken_msg,
+                    original_text=orig_text,
+                    normalized_text=norm_text,
+                    normalization_notes=norm_meta,
+                )
+
         raw_l = f"{orig_text} {norm_text}".lower()
         if not action or action in ("none", "unknown", "customer_history", "daily_summary") or intent in ("customer_query", "khata_query", "history_query", "customer_management", "unknown"):
             if any(k in raw_l for k in ["मेरी लिस्ट", "लिस्ट में", "कौन कौन", "कौन-कौन", "ग्राहक कौन", "ग्राहक लिस्ट", "लिस्ट बताओ", "କିଏ କିଏ", "ତାଲିକା", "meri list", "list me aur", "list me kaun", "kaun kaun hai", "customer list", "grahak list", "sabke naam", "all customer", "show customer"]):
@@ -121,6 +236,9 @@ class IntentExecutor:
             elif any(k in raw_l for k in ["कितना बाकी", "कितना उधार", "हिसाब बताओ", "खाता दिखाओ", "ବାକି କେତେ", "kitna baki", "kitna udhar", "hisab batao", "khata dikhao", "kitna rupya baki"]):
                 action = "check_balance"
                 intent = "customer_query"
+            elif any(k in raw_l for k in ["order de do", "order kar do", "order bhej do", "order kardo", "doodh mangwa", "doodh mangao", "packet doodh", "packets of milk", "order milk", "distributor ko", "supplier ko"]):
+                action = "order_from_supplier"
+                intent = "supplier_order"
 
         try:
             if intent in ("customer_query", "khata_query") or action in ("list_customers", "top_debtors", "filter_debtors", "cleared_debtors", "check_balance"):
@@ -223,7 +341,6 @@ class IntentExecutor:
                             threshold = 0.0
 
                     if threshold <= 0:
-                        import re
                         num_match = re.search(r"(\d+[\d,]*)", raw_check)
                         if num_match:
                             threshold = float(num_match.group(1).replace(",", ""))
@@ -306,7 +423,6 @@ class IntentExecutor:
                 elif action == "check_balance":
                     cust_name = params.get("customer_name") or entities.get("customer")
                     if not cust_name:
-                        import re
                         all_custs = customer_queries.get_customers_with_balances_by_shop(shop_id)
                         for c in all_custs:
                             if c["name"].lower() in raw_l:
@@ -675,14 +791,50 @@ class IntentExecutor:
                         original_text=orig_text,
                     )
 
+                matches = product_queries.search_products(shop_id, p_name)
+                exact_prod = next((p for p in matches if p["name"].lower() == p_name.lower()), None) if matches else None
+                existing_price = Decimal(str(exact_prod["price"])) if exact_prod and exact_prod.get("price") is not None else Decimal("0.00")
+                provided_price = params.get("price")
+                v_price = Decimal(str(provided_price)) if provided_price is not None and str(provided_price).strip() else Decimal("0.00")
+
+                market_source = None
+                if action in ("add_stock", "adjust_stock") and (not exact_prod or existing_price <= Decimal("0.00")) and v_price <= Decimal("0.00"):
+                    disc = get_market_price(p_name, params.get("unit"))
+                    if disc and disc.get("price") and float(disc["price"]) > 0:
+                        v_price = Decimal(str(disc["price"]))
+                        market_source = disc.get("source")
+                    else:
+                        unit_label = params.get("unit") or (exact_prod.get("unit") if exact_prod else "kilo") or "kilo"
+                        PendingContextManager.set(shop_id, {
+                            "action": "awaiting_product_price",
+                            "product_name": p_name,
+                            "quantity": qty_change,
+                            "unit": unit_label,
+                        })
+                        cq = f"{p_name} ka rate kitne rupaye prati {unit_label} hai? Kripya bhav batayein."
+                        return ExecutionResult(
+                            success=True,
+                            action="ask_product_price",
+                            clarification_needed=True,
+                            clarification_question=cq,
+                            message=cq,
+                            spoken_message=cq,
+                            original_text=orig_text,
+                            normalized_text=norm_text,
+                            normalization_notes=norm_meta,
+                        )
+
+                final_price = v_price if v_price > Decimal("0.00") else existing_price
                 auto_create_prod = action in ("add_stock", "adjust_stock")
                 res_prod, was_prod_created = ProductService.resolve_or_create_product(
                     shop_id=shop_id,
                     product_name=p_name,
-                    price=params.get("price") or Decimal("0.00"),
-                    unit=params.get("unit") or "unit",
+                    price=final_price,
+                    unit=params.get("unit") or (exact_prod["unit"] if exact_prod else "unit"),
                     auto_create=auto_create_prod,
                 )
+                if v_price > Decimal("0.00") and float(res_prod.get("price") or 0) != float(v_price):
+                    ProductService.update_product_price(shop_id, res_prod["id"], float(v_price))
 
                 if action == "reduce_stock" and Decimal(str(qty_change)) > Decimal("0.00"):
                     qty_change = -Decimal(str(qty_change))
@@ -693,12 +845,23 @@ class IntentExecutor:
                     quantity_change=qty_change,
                     reason=params.get("reason") or action,
                 )
+                PendingContextManager.clear(shop_id)
+                u_str = res_prod.get('unit') or ''
+                if market_source:
+                    p_str = f" (₹{float(final_price):,.2f} prati {u_str or 'unit'} ke bazar bhav se)"
+                elif final_price > Decimal("0.00"):
+                    p_str = f" (₹{float(final_price):,.2f} ke bhav se)"
+                else:
+                    p_str = ""
+                spoken_msg = f"{res_prod['name']} ka {qty_change} {u_str} stock me add ho gaya hai{p_str}। Kul stock: {adj['new_quantity']} {u_str}."
                 prod_created_prefix = f"New product '{res_prod['name']}' initialized. " if was_prod_created else ""
+                audit_msg = f"{prod_created_prefix}Stock for '{res_prod['name']}' adjusted by {qty_change}. New quantity: {adj['new_quantity']}."
                 return ExecutionResult(
                     success=True,
                     action=action,
                     result=adj,
-                    message=f"{prod_created_prefix}Stock for '{res_prod['name']}' adjusted by {qty_change}. New quantity: {adj['new_quantity']}.",
+                    message=audit_msg,
+                    spoken_message=spoken_msg,
                     original_text=orig_text,
                     normalized_text=norm_text,
                     normalization_notes=norm_meta,
@@ -726,40 +889,123 @@ class IntentExecutor:
                 txs = TransactionService.get_shop_transactions(shop_id)
                 return ExecutionResult(success=True, action=action, result=txs, message="Shop transactions retrieved.", original_text=orig_text)
 
+            elif intent == "supplier_order" or action in ("order_from_supplier", "restock_order"):
+                raw_item = params.get("item") or params.get("product_name") or entities.get("product") or "doodh"
+                qty_raw = params.get("quantity") or params.get("quantity_change")
+                if not qty_raw:
+                    match_num = re.search(r'(\d+)', raw_l)
+                    qty_raw = match_num.group(1) if match_num else "20"
+                unit_val = params.get("unit") or "packet"
+                if "bori" in raw_l:
+                    unit_val = "bori"
+                elif "kilo" in raw_l or "kg" in raw_l:
+                    unit_val = "kg"
+                elif "packet" in raw_l:
+                    unit_val = "packet"
+                timing_val = params.get("timing") or "kal subah"
+                if "tomorrow" in raw_l or "kal" in raw_l:
+                    timing_val = "kal subah" if "subah" in raw_l or "morning" in raw_l else "kal"
+                elif "aaj sham" in raw_l or "evening" in raw_l:
+                    timing_val = "aaj sham"
+
+                sh_data = shop_queries.get_shop_by_id(shop_id)
+                shop_name_display = sh_data.get("name") if sh_data else "Meri Dukaan"
+
+                supp = supplier_queries.find_supplier_by_category_or_name(shop_id, raw_item)
+                supp_name = supp["name"] if supp else "Dairy Distributor"
+                supp_phone = (supp.get("phone") or "9876543210") if supp else "9876543210"
+
+                clean_phone = re.sub(r"[^0-9]", "", supp_phone)
+                if not clean_phone.startswith("91") and len(clean_phone) == 10:
+                    clean_phone = "91" + clean_phone
+
+                whatsapp_text = (
+                    f"*नमस्ते जी!* 🙏\n\n"
+                    f"*{shop_name_display}* से आर्डर:\n"
+                    f"कृपया *{timing_val}* के लिए निम्नलिखित सामान भेजें:\n"
+                    f"📦 *{qty_raw} {unit_val}* - *{raw_item.title()}*\n\n"
+                    f"धन्यवाद! 🙏\n"
+                    f"*{shop_name_display}*"
+                )
+                whatsapp_url = f"https://api.whatsapp.com/send?phone={clean_phone}&text={quote(whatsapp_text)}"
+
+                spoken_msg = f"{timing_val.capitalize()} ke liye {qty_raw} {unit_val} {raw_item} ka order draft taiyar hai. WhatsApp par distributor ko bhejne ke liye ready hai."
+                audit_msg = f"Supplier order for {qty_raw} {unit_val} {raw_item} drafted for {supp_name}."
+
+                try:
+                    ow_id = sh_data["owner_id"] if sh_data else 1
+                    notification_queries.create_notification(
+                        shop_id=shop_id,
+                        user_id=ow_id,
+                        title=f"सप्लायर ऑर्डर: {raw_item.title()}",
+                        message=f"{supp_name} के लिए {qty_raw} {unit_val} {raw_item} का ऑर्डर तैयार है।",
+                        notification_type="supplier_order",
+                    )
+                except Exception:
+                    pass
+
+                return ExecutionResult(
+                    success=True,
+                    action="order_from_supplier",
+                    result={
+                        "supplier_name": supp_name,
+                        "supplier_phone": supp_phone,
+                        "item": raw_item,
+                        "quantity": str(qty_raw),
+                        "unit": unit_val,
+                        "timing": timing_val,
+                        "whatsapp_url": whatsapp_url,
+                        "whatsapp_message": whatsapp_text,
+                    },
+                    message=audit_msg,
+                    spoken_message=spoken_msg,
+                    original_text=orig_text,
+                    normalized_text=norm_text,
+                    normalization_notes=norm_meta,
+                )
+
+            cq = "Maaf kijiye, yeh command samajh nahi aayi. Kripya dobara bolein ya dukaan ka hisaab batayein."
             return ExecutionResult(
                 success=False,
                 action=action,
                 clarification_needed=True,
-                clarification_question="Maaf kijiye, yeh command abhi supported nahi hai ya samajh nahi aayi.",
-                message=f"Unsupported intent '{intent}' or action '{action}'.",
+                clarification_question=cq,
+                message=cq,
+                spoken_message=cq,
                 original_text=orig_text,
             )
 
         except NegativeContradictionError as exc:
+            msg = str(exc)
             return ExecutionResult(
                 success=True,
                 action=action,
                 clarification_needed=True,
-                clarification_question=str(exc),
-                message="Negative financial amount contradiction detected.",
+                clarification_question=msg,
+                message=msg,
+                spoken_message=msg,
                 original_text=orig_text,
             )
         except AmbiguousEntityError as exc:
+            msg = str(exc)
             return ExecutionResult(
                 success=True,
                 action=action,
                 clarification_needed=True,
-                clarification_question=str(exc),
-                message="Ambiguous entity match.",
+                clarification_question=msg,
+                message=msg,
+                spoken_message=msg,
                 original_text=orig_text,
             )
         except EntityNotFoundError as exc:
+            msg = f"{str(exc)}. Kripya pehle use add karein ya naam jaanchein."
             return ExecutionResult(
                 success=False,
                 action=action,
                 clarification_needed=True,
-                clarification_question=f"{str(exc)}. Kripya pehle use add karein ya naam jaanchein.",
-                message=str(exc),
+                clarification_question=msg,
+                message=msg,
+                spoken_message=msg,
                 original_text=orig_text,
             )
         except InsufficientStockError as exc:

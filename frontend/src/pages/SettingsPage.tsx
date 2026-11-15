@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { UserProfile } from '../types';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 interface SettingsPageProps {
   user: UserProfile;
@@ -47,6 +48,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
   const [paymentPhone, setPaymentPhone] = useState(user.phone || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -74,9 +76,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
             if (s.gstin) setGstin(s.gstin);
           }
         }
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-      }
+      } catch {}
     };
     fetchSettings();
   }, []);
@@ -84,10 +84,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
+    setSavedSuccess(false);
+    setSettingsError(null);
     const token = localStorage.getItem('dukaanai_token');
+    let saveOk = true;
     if (token) {
       try {
-        await fetch('/api/settings', {
+        const res = await fetch('/api/settings', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -102,23 +105,30 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
             theme,
           }),
         });
+        if (!res.ok) {
+          saveOk = false;
+          setSettingsError(SAFE_MESSAGES.SETTINGS_FAILED);
+        }
       } catch (err) {
-        console.error('Failed to persist settings:', err);
+        saveOk = false;
+        setSettingsError(sanitizeErrorMessage(err, SAFE_MESSAGES.SETTINGS_FAILED));
       }
     }
 
-    onUpdateUser({
-      name,
-      email,
-      phone,
-      shop_name: shopName,
-      gstin,
-      address,
-      upi_id: upiId,
-    });
     setSaving(false);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 3000);
+    if (saveOk) {
+      onUpdateUser({
+        name,
+        email,
+        phone,
+        shop_name: shopName,
+        gstin,
+        address,
+        upi_id: upiId,
+      });
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 3000);
+    }
   };
 
   return (
@@ -149,6 +159,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
       {savedSuccess && (
         <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
           <Check className="w-4 h-4 text-emerald-400" /> Settings updated and saved successfully.
+        </div>
+      )}
+
+      {settingsError && (
+        <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+          <X className="w-4 h-4 text-rose-400" /> {settingsError}
         </div>
       )}
 

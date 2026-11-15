@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { Product } from '../types';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -101,7 +102,7 @@ export const ProductsPage: React.FC = () => {
         setShowAddModal(false);
       }
     } catch (err: any) {
-      setFormError(err.message || 'Failed to save product.');
+      setFormError(sanitizeErrorMessage(err, SAFE_MESSAGES.PRODUCT_FAILED));
     }
   };
 

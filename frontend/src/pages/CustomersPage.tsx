@@ -14,9 +14,13 @@ import {
   MessageSquare,
   Copy,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
 } from 'lucide-react';
 import { ApiService } from '../services/api';
 import { Customer, Transaction } from '../types';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 export const CustomersPage: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -34,11 +38,13 @@ export const CustomersPage: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
 
   const [showTxModal, setShowTxModal] = useState<'credit' | 'payment' | null>(null);
   const [txAmount, setTxAmount] = useState('');
   const [txNote, setTxNote] = useState('');
   const [txLoading, setTxLoading] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
 
   useEffect(() => {
     loadCustomers();
@@ -88,15 +94,22 @@ export const CustomersPage: React.FC = () => {
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    const added = await ApiService.addCustomer({ name: newName, phone: newPhone });
-    if (added) {
-      await loadCustomers();
-      setSelectedCustomer(added);
-      setCustomerTxns([]);
+    setAddError(null);
+    try {
+      const added = await ApiService.addCustomer({ name: newName.trim(), phone: newPhone.trim() });
+      if (added) {
+        await loadCustomers();
+        setSelectedCustomer(added);
+        setCustomerTxns([]);
+        setNewName('');
+        setNewPhone('');
+        setShowAddModal(false);
+      } else {
+        setAddError(SAFE_MESSAGES.CUSTOMER_FAILED);
+      }
+    } catch (err: any) {
+      setAddError(sanitizeErrorMessage(err, SAFE_MESSAGES.CUSTOMER_FAILED));
     }
-    setNewName('');
-    setNewPhone('');
-    setShowAddModal(false);
   };
 
   const handleRecordTransaction = async (e: React.FormEvent) => {
@@ -106,6 +119,7 @@ export const CustomersPage: React.FC = () => {
     if (isNaN(amt) || amt <= 0) return;
 
     setTxLoading(true);
+    setTxError(null);
     try {
       const ok = await ApiService.recordTransaction({
         customer_name: selectedCustomer.name,
@@ -119,7 +133,11 @@ export const CustomersPage: React.FC = () => {
         setShowTxModal(null);
         setTxAmount('');
         setTxNote('');
+      } else {
+        setTxError(SAFE_MESSAGES.TRANSACTION_FAILED);
       }
+    } catch (err: any) {
+      setTxError(sanitizeErrorMessage(err, SAFE_MESSAGES.TRANSACTION_FAILED));
     } finally {
       setTxLoading(false);
     }
@@ -153,6 +171,16 @@ export const CustomersPage: React.FC = () => {
     const displayName = storeShopName || 'Store';
     const upiUri = `upi://pay?pa=${encodeURIComponent(storeUpiId)}&pn=${encodeURIComponent(displayName)}&am=${balance}&cu=INR&tn=KhataPayment`;
     const qrImageUrl = `${window.location.origin}/api/payments/qr-code?data=${encodeURIComponent(upiUri)}`;
+    
+    let shopId = 1;
+    const userStr = localStorage.getItem('dukaanai_user');
+    if (userStr) {
+      try {
+        const u = JSON.parse(userStr);
+        if (u.shop_id) shopId = u.shop_id;
+      } catch {}
+    }
+    const pdfUrl = `${window.location.origin}/api/customers/${target.id}/invoice.pdf?shop_id=${shopId}`;
 
     const message = 
 `*नमस्ते ${target.name} जी,* 🙏
@@ -162,6 +190,9 @@ export const CustomersPage: React.FC = () => {
 
 📲 *सीधे UPI (Google Pay / PhonePe / Paytm) से भुगतान लिंक:*
 ${upiUri}
+
+📄 *डिजिटल बिल (PDF) डाउनलोड करें:*
+${pdfUrl}
 
 🖼️ *बिल का QR कोड देखकर स्कैन करें:*
 ${qrImageUrl}
@@ -233,44 +264,26 @@ _UPI ID:_ \`${storeUpiId}\`
     <div className="h-full flex flex-col min-h-0 gap-4 overflow-hidden select-none">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-[var(--text-primary)]">
-                Customers &amp; Khata
-              </h2>
-              {/* Mobile Menu Tab Button to open customer list drawer */}
-              <button
-                type="button"
-                onClick={() => setMobileDrawerOpen(true)}
-                className="lg:hidden flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#FFD026] text-black text-xs font-black shadow-xs active:scale-95 cursor-pointer"
-                title="Select Customer from Menu"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Customers ({customers.length})</span>
-              </button>
-            </div>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5 hidden sm:block">
-              Real customer records, outstanding balances, and store ledger history.
-            </p>
-          </div>
+        {/* Mobile Spacer so Title is shifted right and leaves room for the animated edge button */}
+        <div className="w-9 lg:hidden shrink-0" />
+
+        {/* Title shifted completely to the right on mobile */}
+        <div className="text-right sm:text-left ml-auto sm:ml-0 min-w-0">
+          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-[var(--text-primary)] truncate">
+            Customers &amp; Khata
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 hidden sm:block">
+            Real customer records, outstanding balances, and store ledger history.
+          </p>
         </div>
 
-        {/* Right Action: Desktop full button, Mobile "+" button */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right Action: Desktop only button */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowAddModal(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black text-xs font-bold shadow-sm transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black text-xs font-bold shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4 text-[#FFD026] dark:text-black" /> Add New Customer
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="sm:hidden w-9 h-9 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black shadow-sm active:scale-95 cursor-pointer border border-[#E6B800]"
-            title="Add New Customer"
-            aria-label="Add New Customer"
-          >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
           </button>
         </div>
       </div>
@@ -301,10 +314,10 @@ _UPI ID:_ \`${storeUpiId}\`
           </div>
         </div>
 
-        {/* Selected Customer Detailed Ledger (Takes 100% full screen on mobile) */}
-        <div className="col-span-1 lg:col-span-2 glass-card rounded-2xl p-4 sm:p-5 flex flex-col h-full min-h-0 overflow-hidden">
+        {/* Selected Customer Detailed Ledger (Scrollable on mobile, fixed on desktop) */}
+        <div className="col-span-1 lg:col-span-2 glass-card rounded-2xl p-4 sm:p-5 flex flex-col h-full min-h-0 overflow-y-auto lg:overflow-hidden auto-hide-scrollbar pb-6 lg:pb-5">
           {selectedCustomer ? (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            <div className="flex-1 flex flex-col min-h-0">
               {/* Customer Header & Quick Action Buttons */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-color)] shrink-0">
                 <div className="flex items-center gap-3">
@@ -335,6 +348,16 @@ _UPI ID:_ \`${storeUpiId}\`
                   >
                     <MessageSquare className="w-3.5 h-3.5" /> Send on WhatsApp
                   </button>
+
+                  <a
+                    href={`/api/customers/${selectedCustomer.id}/invoice.pdf`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Download Official PDF Khata Statement"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 hover:bg-purple-500/25 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                  >
+                    <FileText className="w-3.5 h-3.5" /> PDF Bill
+                  </a>
 
                   <button
                     onClick={() => setShowTxModal('credit')}
@@ -386,7 +409,7 @@ _UPI ID:_ \`${storeUpiId}\`
               </div>
 
               {/* Transaction Ledger Table */}
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 flex flex-col min-h-0">
                 <h4 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider mb-2 flex items-center justify-between shrink-0">
                   <span className="flex items-center gap-2">
                     <History className="w-4 h-4 text-[#FFD026]" /> Customer Khata Ledger
@@ -396,7 +419,7 @@ _UPI ID:_ \`${storeUpiId}\`
                   </span>
                 </h4>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-0">
+                <div className="overflow-y-visible lg:overflow-y-auto lg:custom-scrollbar space-y-2 pr-1 min-h-0">
                   {loadingTxns ? (
                     <div className="p-8 text-center text-xs text-[var(--text-muted)] animate-pulse">
                       Loading customer ledger transactions...
@@ -472,6 +495,11 @@ _UPI ID:_ \`${storeUpiId}\`
             </div>
 
             <form onSubmit={handleAddCustomer} className="space-y-4 text-xs">
+              {addError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold">
+                  {addError}
+                </div>
+              )}
               <div>
                 <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Customer Full Name</label>
                 <input
@@ -532,6 +560,11 @@ _UPI ID:_ \`${storeUpiId}\`
             </div>
 
             <form onSubmit={handleRecordTransaction} className="space-y-4 text-xs">
+              {txError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold">
+                  {txError}
+                </div>
+              )}
               <div>
                 <label className="block font-semibold text-[var(--text-muted)] mb-1 uppercase">Amount (₹)</label>
                 <input
@@ -668,60 +701,85 @@ _UPI ID:_ \`${storeUpiId}\`
         </div>
       )}
 
-      {/* Mobile Customer Selection Drawer */}
-      {mobileDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex lg:hidden bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-4/5 max-w-sm bg-white dark:bg-[#12161F] h-full shadow-2xl flex flex-col p-4 border-r border-[var(--border-color)] space-y-3 animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border-color)]">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-[#FFD026]" />
-                <h3 className="font-black text-sm text-[var(--text-primary)]">
-                  Customers List ({customers.length})
-                </h3>
-              </div>
-              <button
-                onClick={() => setMobileDrawerOpen(false)}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-                title="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Mobile Backdrop Overlay (darkens background only when drawer is open) */}
+      <div
+        onClick={() => setMobileDrawerOpen(false)}
+        className={`fixed inset-0 z-40 bg-black/70 backdrop-blur-xs lg:hidden transition-opacity duration-300 ease-in-out ${
+          mobileDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        }`}
+      />
 
-            <button
-              onClick={() => {
-                setMobileDrawerOpen(false);
-                setShowAddModal(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-[#FFD026] text-black text-xs font-black shadow-xs cursor-pointer active:scale-95"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" /> Add New Customer
-            </button>
+      {/* Mobile Sliding Left Drawer & Edge Toggle Arrow Button */}
+      <div
+        className={`fixed top-16 bottom-16 left-0 z-50 w-4/5 max-w-xs bg-white dark:bg-[#12161F] shadow-2xl flex flex-col p-4 border-r border-[var(--border-color)] space-y-3 lg:hidden transition-transform duration-300 ease-in-out ${
+          mobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Animated Edge Arrow Button: Smoothly slides along with the sidebar edge */}
+        <button
+          type="button"
+          onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
+          className="absolute -right-9 top-3 w-9 h-9 rounded-r-xl bg-[#FFD026] text-black flex items-center justify-center font-black shadow-md border-y border-r border-[#E6B800] active:scale-95 cursor-pointer z-50 pointer-events-auto transition-colors duration-200"
+          title={mobileDrawerOpen ? 'Close Customers Sidebar' : 'Open Customers Sidebar'}
+          aria-label={mobileDrawerOpen ? 'Close Customers Sidebar' : 'Open Customers Sidebar'}
+        >
+          {mobileDrawerOpen ? (
+            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+          ) : (
+            <ChevronRight className="w-5 h-5 stroke-[2.5]" />
+          )}
+        </button>
 
-            <div className="relative shrink-0">
-              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search store customers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-black/5 dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[#FFD026]"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-1 min-h-0">
-              {filtered.length === 0 ? (
-                <div className="text-center py-12 text-[var(--text-muted)] text-xs">
-                  No customers found.
-                </div>
-              ) : (
-                filtered.map((c) => renderCustomerItem(c))
-              )}
-            </div>
+        <div className="flex items-center justify-between pb-2 border-b border-[var(--border-color)]">
+          <div className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-[#FFD026]" />
+            <h3 className="font-black text-sm text-[var(--text-primary)]">
+              Customers List ({customers.length})
+            </h3>
           </div>
-          <div className="flex-1" onClick={() => setMobileDrawerOpen(false)} />
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(false)}
+            className="w-7 h-7 rounded-xl bg-black/5 dark:bg-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-color)] cursor-pointer"
+            title="Close"
+          >
+            <X className="w-4 h-4 stroke-[2.2]" />
+          </button>
         </div>
-      )}
+
+        {/* Add New Customer in Sidebar */}
+        <button
+          type="button"
+          onClick={() => {
+            setMobileDrawerOpen(false);
+            setShowAddModal(true);
+          }}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#FFD026] text-black text-xs font-black shadow-xs cursor-pointer active:scale-95 border border-[#E6B800]"
+        >
+          <Plus className="w-4 h-4 stroke-[2.5]" /> Add New Customer
+        </button>
+
+        <div className="relative shrink-0">
+          <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3 top-2.5" />
+          <input
+            type="text"
+            placeholder="Search store customers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-black/5 dark:bg-white/5 border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[#FFD026]"
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto auto-hide-scrollbar space-y-2 pr-1 min-h-0">
+          {filtered.length === 0 ? (
+            <div className="text-center py-12 text-[var(--text-muted)] text-xs">
+              No customers found.
+            </div>
+          ) : (
+            filtered.map((c) => renderCustomerItem(c))
+          )}
+        </div>
+      </div>
     </div>
   );
 };

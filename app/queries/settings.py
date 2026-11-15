@@ -1,15 +1,12 @@
 from typing import Any, Optional
-from app.database.query import execute_query, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def get_settings_by_shop(shop_id: int) -> Optional[dict[str, Any]]:
-    return fetch_one(
-        """
-        SELECT id, shop_id, user_id, upi_id, upi_pin, phone, shop_name, shop_address, gstin, theme, language, low_stock_alert, updated_at
-        FROM settings
-        WHERE shop_id = %s
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    res = client.table("settings").select(
+        "id, shop_id, user_id, upi_id, upi_pin, phone, shop_name, shop_address, gstin, theme, language, low_stock_alert, updated_at"
+    ).eq("shop_id", shop_id).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def upsert_settings(
     shop_id: int,
@@ -25,21 +22,24 @@ def upsert_settings(
     language: str = "hi",
     low_stock_alert: int = 1,
 ) -> bool:
-    execute_query(
-        """
-        INSERT INTO settings (shop_id, user_id, upi_id, upi_pin, phone, shop_name, shop_address, gstin, theme, language, low_stock_alert)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON DUPLICATE KEY UPDATE
-            upi_id = VALUES(upi_id),
-            upi_pin = VALUES(upi_pin),
-            phone = VALUES(phone),
-            shop_name = VALUES(shop_name),
-            shop_address = VALUES(shop_address),
-            gstin = VALUES(gstin),
-            theme = VALUES(theme),
-            language = VALUES(language),
-            low_stock_alert = VALUES(low_stock_alert)
-        """,
-        (shop_id, user_id, upi_id, upi_pin, phone, shop_name, shop_address, gstin, theme, language, low_stock_alert),
-    )
+    client = get_supabase()
+    payload = {
+        "shop_id": shop_id,
+        "user_id": user_id,
+        "upi_id": upi_id,
+        "upi_pin": upi_pin,
+        "phone": phone,
+        "shop_name": shop_name,
+        "shop_address": shop_address,
+        "gstin": gstin,
+        "theme": theme,
+        "language": language,
+        "low_stock_alert": bool(low_stock_alert)
+    }
+    existing = get_settings_by_shop(shop_id)
+    if existing:
+        client.table("settings").update(payload).eq("shop_id", shop_id).execute()
+    else:
+        payload["id"] = get_next_id("settings")
+        client.table("settings").insert(payload).execute()
     return True

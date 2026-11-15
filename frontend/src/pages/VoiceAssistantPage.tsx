@@ -28,6 +28,7 @@ import { Orb } from '../components/Orb';
 import { Waveform } from '../components/Waveform';
 import { AssistantState, VoiceHistoryItem } from '../types';
 import { useTheme } from '../context/ThemeContext';
+import { sanitizeErrorMessage, SAFE_MESSAGES } from '../utils/errorHandler';
 
 interface VoiceAssistantPageProps {
   initialState?: AssistantState;
@@ -54,6 +55,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   const [progressLabel, setProgressLabel] = useState<string>('Ready for store instruction');
 
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState<boolean>(true);
+  const [pendingContext, setPendingContext] = useState<string>('');
 
   const [history, setHistory] = useState<VoiceHistoryItem[]>([]);
   const [activeSpeechText, setActiveSpeechText] = useState<string | null>(null);
@@ -238,6 +240,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
         body: JSON.stringify({
           text,
           shop_id: shopId,
+          context: pendingContext || undefined,
         }),
       });
 
@@ -247,17 +250,24 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       }
 
       const intentData = await intentRes.json();
+      const isConvo =
+        intentData.intent === 'conversation' ||
+        intentData.action === 'greet' ||
+        intentData.action === 'assist' ||
+        intentData.action === 'general_chat';
+
       const customerName =
         intentData.entities?.customer ||
         intentData.parameters?.customer_name ||
-        'Customer';
+        (isConvo ? '' : 'Customer');
+
       const amountVal =
         intentData.parameters?.amount ||
         intentData.entities?.amount ||
         '0';
 
       setState('executing');
-      setStatusSubtitle('Updating ledger...');
+      setStatusSubtitle(isConvo ? 'Thinking...' : 'Updating ledger...');
       setProgressPercent(75);
       setProgressLabel('75%');
 
@@ -280,7 +290,13 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       const txResult = execData.result || {};
       const speechText = execData.spoken_message || execData.message || 'Done';
 
-      setState('success');
+      if (execData.clarification_needed) {
+        setState('clarification');
+        setPendingContext(speechText);
+      } else {
+        setState('success');
+        setPendingContext('');
+      }
       setStatusSubtitle(speechText);
       setProgressPercent(100);
       setProgressLabel('100%');
@@ -325,13 +341,14 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
         audioUrl: currentAudioUrl,
       });
     } catch (err: any) {
+      const safeMsg = sanitizeErrorMessage(err, SAFE_MESSAGES.VOICE_FAILED);
       setState('error');
-      setStatusSubtitle('Could not process request.');
+      setStatusSubtitle(safeMsg);
       setProgressPercent(0);
       setProgressLabel('');
 
       setLastResult({
-        message: err.message,
+        message: safeMsg,
         success: false,
       });
     }
@@ -496,8 +513,9 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       setTranscript(recognized);
       await executeCommand(recognized);
     } catch (err: any) {
+      const safeMsg = sanitizeErrorMessage(err, SAFE_MESSAGES.VOICE_FAILED);
       setState('error');
-      setStatusSubtitle(err.message || 'Error processing audio.');
+      setStatusSubtitle(safeMsg);
       setProgressPercent(0);
       setProgressLabel('');
     }

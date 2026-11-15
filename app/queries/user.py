@@ -1,6 +1,5 @@
 from typing import Any
-
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def create_user(
     name: str,
@@ -8,89 +7,60 @@ def create_user(
     password_hash: str,
     phone: str | None = None,
 ) -> int:
-    result = execute_query(
-        """
-        INSERT INTO users (name, email, password, phone)
-        VALUES (%s, %s, %s, %s)
-        """,
-        (name, email, password_hash, phone),
-    )
-    return result["lastrowid"]
+    client = get_supabase()
+    payload = {
+        "id": get_next_id("users"),
+        "name": name,
+        "email": email,
+        "password": password_hash,
+        "phone": phone
+    }
+    res = client.table("users").insert(payload).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]["id"]
+    return 0
 
 def get_user_by_id(user_id: int) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, name, email, phone
-        FROM users
-        WHERE id = %s
-        """,
-        (user_id,),
-    )
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, phone").eq("id", user_id).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_user_by_email(email: str) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, name, email, phone
-        FROM users
-        WHERE email = %s
-        """,
-        (email,),
-    )
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, phone").eq("email", email).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_user_by_phone(phone: str) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, name, email, phone
-        FROM users
-        WHERE phone = %s
-        """,
-        (phone,),
-    )
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, phone").eq("phone", phone).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_user_credentials_by_email(email: str) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, name, email, password, phone
-        FROM users
-        WHERE email = %s
-        """,
-        (email,),
-    )
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, password, phone").eq("email", email).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_user_credentials_by_email_or_phone(identifier: str) -> dict[str, Any] | None:
     raw = (identifier or "").strip()
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, password, phone").eq("email", raw).limit(1).execute()
+    if res.data:
+        return res.data[0]
+    res_phone = client.table("users").select("id, name, email, password, phone").eq("phone", raw).limit(1).execute()
+    if res_phone.data:
+        return res_phone.data[0]
     digits = "".join(c for c in raw if c.isdigit())
     if len(digits) >= 10:
         last10 = digits[-10:]
-        return fetch_one(
-            """
-            SELECT id, name, email, password, phone
-            FROM users
-            WHERE email = %s OR phone = %s OR phone LIKE %s
-            ORDER BY id ASC
-            LIMIT 1
-            """,
-            (raw, raw, f"%{last10}"),
-        )
-    return fetch_one(
-        """
-        SELECT id, name, email, password, phone
-        FROM users
-        WHERE email = %s OR phone = %s
-        ORDER BY id ASC
-        LIMIT 1
-        """,
-        (raw, raw),
-    )
+        res_like = client.table("users").select("id, name, email, password, phone").ilike("phone", f"%{last10}").limit(1).execute()
+        if res_like.data:
+            return res_like.data[0]
+    return None
 
 def get_all_users() -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT id, name, email, phone
-        FROM users
-        ORDER BY id
-        """
-    )
+    client = get_supabase()
+    res = client.table("users").select("id, name, email, phone").order("id").execute()
+    return res.data or []
 
 def update_user(
     user_id: int,
@@ -100,38 +70,22 @@ def update_user(
     phone: str | None = None,
     password_hash: str | None = None,
 ) -> bool:
-    updates: list[str] = []
-    params: list[Any] = []
-
+    client = get_supabase()
+    payload = {}
     if name is not None:
-        updates.append("name = %s")
-        params.append(name)
-
+        payload["name"] = name
     if email is not None:
-        updates.append("email = %s")
-        params.append(email)
-
+        payload["email"] = email
     if phone is not None:
-        updates.append("phone = %s")
-        params.append(phone)
-
+        payload["phone"] = phone
     if password_hash is not None:
-        updates.append("password = %s")
-        params.append(password_hash)
-
-    if not updates:
+        payload["password"] = password_hash
+    if not payload:
         return False
-
-    params.append(user_id)
-    result = execute_query(
-        f"UPDATE users SET {', '.join(updates)} WHERE id = %s",
-        tuple(params),
-    )
-    return result["rowcount"] > 0
+    res = client.table("users").update(payload).eq("id", user_id).execute()
+    return bool(res.data)
 
 def delete_user(user_id: int) -> bool:
-    result = execute_query(
-        "DELETE FROM users WHERE id = %s",
-        (user_id,),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("users").delete().eq("id", user_id).execute()
+    return bool(res.data)

@@ -154,6 +154,21 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
+  useEffect(() => {
+    const handleScroll = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target && target.classList) {
+        target.classList.add('is-scrolling');
+        clearTimeout((target as any)._scrollTimer);
+        (target as any)._scrollTimer = setTimeout(() => {
+          target.classList.remove('is-scrolling');
+        }, 700);
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    return () => window.removeEventListener('scroll', handleScroll, { capture: true });
+  }, []);
+
   const handleUpdateUser = (updated: Partial<UserProfile>) => {
     if (!user) return;
     const nextUser = { ...user, ...updated };
@@ -220,7 +235,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)]">
+    <div className="flex h-[100dvh] w-screen overflow-hidden bg-[var(--bg-app)] text-[var(--text-primary)] fixed inset-0 select-none">
       <div className="fixed -top-32 left-1/4 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed -bottom-32 right-1/4 w-[550px] h-[550px] bg-purple-600/10 rounded-full blur-[140px] pointer-events-none" />
 
@@ -257,7 +272,7 @@ export const App: React.FC = () => {
                   ? 'overflow-hidden p-0 flex flex-col min-h-0 relative'
                   : currentPage === 'customers'
                   ? 'overflow-hidden p-3 md:p-4 flex flex-col min-h-0 relative'
-                  : 'overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8 custom-scrollbar pb-20 md:pb-6'
+                  : 'overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8 auto-hide-scrollbar pb-20 md:pb-6'
               }`}
             >
               <div

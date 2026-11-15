@@ -5,7 +5,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database.query import execute_query
+from app.database.supabase_client import get_supabase
 from app.security.config import DEFAULT_RATE_LIMITS
 from app.security.rate_limiter import get_rate_limiter
 from app.authentication.auth import create_access_token
@@ -29,15 +29,17 @@ class TestProductionSecurityHardening(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        execute_query("SET FOREIGN_KEY_CHECKS = 0")
-        execute_query("DELETE FROM inventory_logs WHERE shop_id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM inventory WHERE shop_id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM transactions WHERE shop_id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM products WHERE shop_id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM customers WHERE shop_id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM shops WHERE id = %s", (cls.shop_id,))
-        execute_query("DELETE FROM users WHERE id = %s", (cls.user_id,))
-        execute_query("SET FOREIGN_KEY_CHECKS = 1")
+        sb = get_supabase()
+        try:
+            sb.table("inventory_logs").delete().eq("shop_id", cls.shop_id).execute()
+            sb.table("inventory").delete().eq("shop_id", cls.shop_id).execute()
+            sb.table("transactions").delete().eq("shop_id", cls.shop_id).execute()
+            sb.table("products").delete().eq("shop_id", cls.shop_id).execute()
+            sb.table("customers").delete().eq("shop_id", cls.shop_id).execute()
+            sb.table("shops").delete().eq("id", cls.shop_id).execute()
+            sb.table("users").delete().eq("id", cls.user_id).execute()
+        except Exception:
+            pass
 
     def test_01_security_headers_present(self):
         res = self.client.get("/health")

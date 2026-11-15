@@ -141,9 +141,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         setNotifications(filtered);
       }
-    } catch (err) {
-      console.error('Failed to load notifications from database:', err);
-    }
+    } catch {}
   };
 
   useEffect(() => {

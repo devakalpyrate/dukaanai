@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React](https://img.shields.io/badge/React-19.0+-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6+-3178C6.svg?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![MySQL](https://img.shields.io/badge/MySQL-8.0+-4479A1.svg?logo=mysql&logoColor=white)](https://www.mysql.com)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20Cloud-3ECF8E.svg?logo=supabase&logoColor=white)](https://supabase.com)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
 
 **DukaanAI** is a production-grade, voice-first intelligent operating system built specifically for Indian retail shopkeepers (*kirana dukandars*). It bridges everyday spoken Hindi/Hinglish speech with double-entry accounting ledgers, instant local UPI QR code generation, and universal WhatsApp invoice delivery.
@@ -32,8 +32,8 @@
                     ┌────────────────────┴────────────────────┐
                     ▼                                         ▼
 ┌──────────────────────────────────────┐  ┌──────────────────────────────────────┐
-│  MySQL ACID Double-Entry Transaction │  │  Bodhan AI Indic TTS (indic-speak)   │
-│     (Udhar / Jama Balance Math)      │  │      Spoken Confirmation Audio       │
+│ Supabase Cloud PostgreSQL Transaction│  │  Bodhan AI Indic TTS (indic-speak)   │
+│   (Udhar / Jama Balance Math & ACID) │  │      Spoken Confirmation Audio       │
 └───────────────────┬──────────────────┘  └──────────────────────────────────────┘
                     │
                     ▼
@@ -78,21 +78,36 @@
 
 ---
 
-## 🗄️ Database Architecture (MySQL 8.0+)
+## 🗄️ Supabase Cloud Database Architecture (PostgreSQL 15+)
 
-DukaanAI maintains 9 normalized relational tables:
+DukaanAI maintains 11 fully normalized relational tables hosted on **Supabase Cloud PostgreSQL** (`tsymnjjhuedkpzsnsouo`, Tokyo Region):
 
-| Table | Purpose | Key Attributes |
+| Table | Purpose | Key Attributes & Foreign Keys |
 |---|---|---|
-| `users` | Merchant authentication | `id`, `name`, `email`, `phone`, `password` |
-| `shops` | Store multi-tenant profiles | `id`, `owner_id`, `shop_name`, `address` |
-| `customers` | Customer phone & identity directory | `id`, `shop_id`, `name`, `phone` |
-| `transactions` | Double-entry khata debit/credit ledger | `id`, `shop_id`, `customer_id`, `type`, `amount`, `idempotency_key` |
-| `settings` | Dynamic merchant UPI ID & store config | `id`, `shop_id`, `user_id`, `upi_id`, `phone`, `shop_name` |
-| `notifications`| Payment alerts & debt reminders | `id`, `shop_id`, `title`, `message`, `type`, `is_read` |
-| `products` | Inventory catalog | `id`, `shop_id`, `name`, `price`, `unit` |
-| `inventory` | Stock quantities & reorder thresholds | `id`, `shop_id`, `product_id`, `quantity`, `low_stock_limit` |
-| `inventory_logs`| Audit log for inventory changes | `id`, `shop_id`, `product_id`, `quantity_change`, `reason` |
+| `users` | Merchant authentication & profile | `id`, `name`, `email`, `phone`, `password`, `created_at` |
+| `shops` | Multi-tenant store profiles | `id`, `owner_id (FK -> users.id)`, `shop_name`, `address` |
+| `customers` | Customer phone & identity directory | `id`, `shop_id (FK -> shops.id)`, `name`, `phone` |
+| `transactions` | Double-entry khata debit/credit ledger | `id`, `shop_id`, `customer_id`, `type`, `amount`, `idempotency_key`, `created_at` |
+| `settings` | Dynamic merchant UPI ID & store config | `id`, `shop_id`, `user_id`, `upi_id`, `phone`, `shop_name`, `theme`, `language` |
+| `notifications`| Real-time low-stock alerts & debt reminders | `id`, `shop_id`, `title`, `message`, `type`, `is_read`, `created_at` |
+| `products` | Product catalog with price & units | `id`, `shop_id`, `name`, `price`, `unit` |
+| `inventory` | Stock quantities & reorder thresholds | `id`, `shop_id`, `product_id (FK -> products.id)`, `quantity`, `low_stock_limit` |
+| `inventory_logs`| Immutable audit log for stock changes | `id`, `shop_id`, `product_id`, `quantity_change`, `reason`, `created_at` |
+| `suppliers` | Wholesale distributor directory | `id`, `shop_id`, `name`, `category`, `phone`, `created_at` |
+| `global_market_prices`| Benchmark Mandi wholesale rates | `id`, `commodity_name`, `price`, `unit`, `updated_at` |
+
+> 📊 **Official Vector Architecture Diagram:** The official Supabase entity-relationship diagram is available at [supabase-schema.svg](supabase-schema.svg) and inside the live documentation portal at `/docs/supabase-schema`.
+
+---
+
+## 🛡️ Enterprise Security & Error Shield
+
+DukaanAI enforces an OWASP-compliant centralized security and exception handling layer:
+- **Zero Technical Information Disclosure:** Raw database exceptions, SQL queries, table names, file paths, and database error codes (e.g., MySQL 104, PostgreSQL 23505) are intercepted and sanitized into user-friendly messages.
+- **Server-Side Diagnostic Logging:** Complete error context is recorded in structured JSON logs with cryptographically random UUID correlation IDs (`corr_id`).
+- **PII & Secret Redaction:** Passwords, API keys, JWT access tokens, and phone numbers are automatically scrubbed from server logs.
+- **Multi-Tenant Shop Isolation:** Every database operation enforces strict `shop_id` scoping derived from signed JWT claims.
+- **Cryptographic Security:** Passwords hashed with PBKDF2-SHA256 (200,000 iterations); sessions secured via HMAC-SHA256 JWT tokens.
 
 ---
 
@@ -101,7 +116,7 @@ DukaanAI maintains 9 normalized relational tables:
 ### 1. Prerequisites
 - Python 3.10+
 - Node.js 18+ & npm
-- MySQL 8.0+
+- Active Supabase Cloud Project (PostgreSQL)
 
 ### 2. Installation
 ```bash
@@ -122,23 +137,20 @@ npm --prefix frontend run build
 ### 3. Environment Setup (`.env`)
 Create a `.env` file in the project root:
 ```env
-# Database Credentials
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_mysql_password
-DB_NAME=dukaanai
+# Supabase Cloud Database Credentials
+SUPABASE_URL=https://tsymnjjhuedkpzsnsouo.supabase.co
+SUPABASE_KEY=sb_secret_eh1tOSlzQ5nQ-5qrS6lrXA_sQugZUQ9
 
 # Security & Tokens
-JWT_SECRET=your_jwt_secret_key_here
-ENVIRONMENT=development
+SECRET_KEY=your_jwt_signing_secret_here
+ENVIRONMENT=production
 
 # Voice AI & LLM Cloud Endpoints
 GROQ_API_KEY=gsk_your_groq_api_key
-BANDHON_AI_STT_API_KEY=your_bodhan_stt_key
-BANDHON_AI_STT_URL=https://api.bodhan.ai/v1/audio/transcriptions
-BANDHON_AI_TTS_API_KEY=your_bodhan_tts_key
-BANDHON_AI_TTS_URL=https://api.bodhan.ai/v1/audio/speech
+BODHAN_AI_STT_API_KEY=your_bodhan_stt_key
+BODHAN_AI_STT_URL=https://api.bodhan.ai/v1/audio/transcriptions
+BODHAN_AI_TTS_API_KEY=your_bodhan_tts_key
+BODHAN_AI_TTS_URL=https://api.bodhan.ai/v1/audio/speech
 ```
 
 ### 4. Running DukaanAI
@@ -147,17 +159,18 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 - **Web Application:** [http://127.0.0.1:8000/home](http://127.0.0.1:8000/home)
 - **Interactive Documentation:** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- **Hackathon Pitch Deck:** [http://127.0.0.1:8000/docs/pitch](http://127.0.0.1:8000/docs/pitch)
 - **FastAPI OpenAPI Swagger:** [http://127.0.0.1:8000/api/docs](http://127.0.0.1:8000/api/docs)
 
 ---
 
 ## 🧪 Testing
 
-Execute backend unit tests:
+Execute backend test suite:
 ```bash
 python -m unittest discover tests
 ```
-All 23 comprehensive tests verify authentication, rate limiting, SQL security, and voice transaction execution.
+**All 39 automated tests** verify authentication, shop-level isolation, rate limiting, error sanitization, and voice transaction execution against live cloud infrastructure.
 
 ---
 

@@ -1,6 +1,7 @@
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Any
-
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def create_transaction(
     shop_id: int,
@@ -10,102 +11,61 @@ def create_transaction(
     description: str | None = None,
     idempotency_key: str | None = None,
 ) -> int:
-    result = execute_query(
-        """
-        INSERT INTO transactions
-            (shop_id, customer_id, type, amount, description, idempotency_key)
-        VALUES (%s, %s, %s, %s, %s, %s)
-        """,
-        (shop_id, customer_id, transaction_type, amount, description, idempotency_key),
-    )
-    return result["lastrowid"]
+    client = get_supabase()
+    payload = {
+        "id": get_next_id("transactions"),
+        "shop_id": shop_id,
+        "customer_id": customer_id,
+        "type": transaction_type,
+        "amount": amount,
+        "description": description,
+        "idempotency_key": idempotency_key
+    }
+    res = client.table("transactions").insert(payload).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]["id"]
+    return 0
 
 def get_transaction_by_id(transaction_id: int, shop_id: int | None = None) -> dict[str, Any] | None:
+    client = get_supabase()
+    query = client.table("transactions").select("id, shop_id, customer_id, type, amount, description, idempotency_key, created_at").eq("id", transaction_id)
     if shop_id is not None:
-        return fetch_one(
-            """
-            SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
-            FROM transactions
-            WHERE id = %s AND shop_id = %s
-            """,
-            (transaction_id, shop_id),
-        )
-    return fetch_one(
-        """
-        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
-        FROM transactions
-        WHERE id = %s
-        """,
-        (transaction_id,),
-    )
+        query = query.eq("shop_id", shop_id)
+    res = query.limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_transaction_by_idempotency_key(shop_id: int, idempotency_key: str) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
-        FROM transactions
-        WHERE shop_id = %s AND idempotency_key = %s
-        """,
-        (shop_id, idempotency_key),
-    )
+    client = get_supabase()
+    res = client.table("transactions").select("id, shop_id, customer_id, type, amount, description, idempotency_key, created_at").eq("shop_id", shop_id).eq("idempotency_key", idempotency_key).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_transactions_by_shop(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT t.id, t.shop_id, t.customer_id, c.name AS customer_name, t.type, t.amount, t.description, t.idempotency_key, t.created_at
-        FROM transactions t
-        LEFT JOIN customers c ON t.customer_id = c.id
-        WHERE t.shop_id = %s
-        ORDER BY t.created_at DESC, t.id DESC
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    t_res = client.table("transactions").select("id, shop_id, customer_id, type, amount, description, idempotency_key, created_at").eq("shop_id", shop_id).order("created_at", desc=True).order("id", desc=True).execute()
+    txs = t_res.data or []
+    if not txs:
+        return []
+
+    c_res = client.table("customers").select("id, name").eq("shop_id", shop_id).execute()
+    c_map = {c["id"]: c["name"] for c in (c_res.data or [])}
+
+    for t in txs:
+        t["customer_name"] = c_map.get(t.get("customer_id"), "Unknown Customer")
+    return txs
 
 def get_transactions_by_customer(
     shop_id: int,
     customer_id: int,
 ) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT id, shop_id, customer_id, type, amount, description, idempotency_key, created_at
-        FROM transactions
-        WHERE shop_id = %s AND customer_id = %s
-        ORDER BY created_at DESC, id DESC
-        """,
-        (shop_id, customer_id),
-    )
+    client = get_supabase()
+    res = client.table("transactions").select("id, shop_id, customer_id, type, amount, description, idempotency_key, created_at").eq("shop_id", shop_id).eq("customer_id", customer_id).order("created_at", desc=True).order("id", desc=True).execute()
+    return res.data or []
 
 def get_shop_financial_summary_in_db(shop_id: int) -> dict[str, Any]:
-    row = fetch_one(
-        """
-        SELECT 
-            COUNT(t.id) AS total_transactions,
-            COUNT(DISTINCT t.customer_id) AS active_customers,
-            COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) AS total_sales_credit,
-            COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) AS total_payments_received,
-            ROUND(
-                COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) -
-                COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00),
-                2
-            ) AS net_outstanding_credit,
-            CASE 
-                WHEN COALESCE(SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) > 0
-                THEN ROUND(
-                    (COALESCE(SUM(CASE WHEN t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) / 
-                     SUM(CASE WHEN t.type = 'credit' THEN t.amount ELSE 0.00 END)) * 100,
-                    2
-                )
-                ELSE 100.00
-            END AS recovery_rate_percentage,
-            COALESCE(SUM(CASE WHEN DATE(t.created_at) = CURRENT_DATE AND t.type = 'credit' THEN t.amount ELSE 0.00 END), 0.00) AS today_credit_sales,
-            COALESCE(SUM(CASE WHEN DATE(t.created_at) = CURRENT_DATE AND t.type = 'payment' THEN t.amount ELSE 0.00 END), 0.00) AS today_payments_received,
-            COUNT(CASE WHEN DATE(t.created_at) = CURRENT_DATE THEN t.id ELSE NULL END) AS today_transactions_count
-        FROM transactions t
-        WHERE t.shop_id = %s
-        """,
-        (shop_id,),
-    )
-    if not row:
+    client = get_supabase()
+    t_res = client.table("transactions").select("id, customer_id, type, amount, created_at").eq("shop_id", shop_id).execute()
+    txs = t_res.data or []
+    if not txs:
         return {
             "total_transactions": 0,
             "active_customers": 0,
@@ -117,7 +77,47 @@ def get_shop_financial_summary_in_db(shop_id: int) -> dict[str, Any]:
             "today_payments_received": 0.0,
             "today_transactions_count": 0,
         }
-    return row
+
+    active_customers = len(set(t["customer_id"] for t in txs if t.get("customer_id")))
+    total_sales_credit = Decimal("0.00")
+    total_payments_received = Decimal("0.00")
+    today_credit_sales = Decimal("0.00")
+    today_payments_received = Decimal("0.00")
+    today_transactions_count = 0
+    today_str = date.today().isoformat()
+
+    for t in txs:
+        amt = Decimal(str(t.get("amount") or "0.00"))
+        t_type = t.get("type")
+        c_at = str(t.get("created_at") or "")
+        is_today = c_at.startswith(today_str)
+
+        if t_type == "credit":
+            total_sales_credit += amt
+            if is_today:
+                today_credit_sales += amt
+        elif t_type == "payment":
+            total_payments_received += amt
+            if is_today:
+                today_payments_received += amt
+
+        if is_today:
+            today_transactions_count += 1
+
+    net_outstanding = round(total_sales_credit - total_payments_received, 2)
+    recovery_rate = round((total_payments_received / total_sales_credit) * 100, 2) if total_sales_credit > 0 else Decimal("100.00")
+
+    return {
+        "total_transactions": len(txs),
+        "active_customers": active_customers,
+        "total_sales_credit": total_sales_credit,
+        "total_payments_received": total_payments_received,
+        "net_outstanding_credit": net_outstanding,
+        "recovery_rate_percentage": recovery_rate,
+        "today_credit_sales": today_credit_sales,
+        "today_payments_received": today_payments_received,
+        "today_transactions_count": today_transactions_count,
+    }
 
 def update_transaction(
     transaction_id: int,
@@ -128,49 +128,28 @@ def update_transaction(
     description: str | None = None,
     idempotency_key: str | None = None,
 ) -> bool:
-    updates: list[str] = []
-    params: list[Any] = []
-
+    client = get_supabase()
+    payload = {}
     if transaction_type is not None:
-        updates.append("type = %s")
-        params.append(transaction_type)
-
+        payload["type"] = transaction_type
     if amount is not None:
-        updates.append("amount = %s")
-        params.append(amount)
-
+        payload["amount"] = amount
     if description is not None:
-        updates.append("description = %s")
-        params.append(description)
-
+        payload["description"] = description
     if idempotency_key is not None:
-        updates.append("idempotency_key = %s")
-        params.append(idempotency_key)
-
-    if not updates:
+        payload["idempotency_key"] = idempotency_key
+    if not payload:
         return False
-
-    params.append(transaction_id)
-    where_clause = "WHERE id = %s"
+    query = client.table("transactions").update(payload).eq("id", transaction_id)
     if shop_id is not None:
-        where_clause += " AND shop_id = %s"
-        params.append(shop_id)
-
-    result = execute_query(
-        f"UPDATE transactions SET {', '.join(updates)} {where_clause}",
-        tuple(params),
-    )
-    return result["rowcount"] > 0
+        query = query.eq("shop_id", shop_id)
+    res = query.execute()
+    return bool(res.data)
 
 def delete_transaction(transaction_id: int, shop_id: int | None = None) -> bool:
+    client = get_supabase()
+    query = client.table("transactions").delete().eq("id", transaction_id)
     if shop_id is not None:
-        result = execute_query(
-            "DELETE FROM transactions WHERE id = %s AND shop_id = %s",
-            (transaction_id, shop_id),
-        )
-    else:
-        result = execute_query(
-            "DELETE FROM transactions WHERE id = %s",
-            (transaction_id,),
-        )
-    return result["rowcount"] > 0
+        query = query.eq("shop_id", shop_id)
+    res = query.execute()
+    return bool(res.data)

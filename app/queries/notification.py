@@ -1,5 +1,5 @@
 from typing import Any
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def create_notification(
     shop_id: int,
@@ -8,94 +8,55 @@ def create_notification(
     message: str,
     notification_type: str = "info",
 ) -> int:
-    result = execute_query(
-        """
-        INSERT INTO notifications (shop_id, user_id, title, message, type)
-        VALUES (%s, %s, %s, %s, %s)
-        """,
-        (shop_id, user_id, title, message, notification_type),
-    )
-    return result["lastrowid"]
+    client = get_supabase()
+    payload = {
+        "id": get_next_id("notifications"),
+        "shop_id": shop_id,
+        "user_id": user_id,
+        "title": title,
+        "message": message,
+        "type": notification_type
+    }
+    res = client.table("notifications").insert(payload).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]["id"]
+    return 0
 
 def get_notifications_by_shop(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT id, shop_id, user_id, title, message, type, is_read, created_at
-        FROM notifications
-        WHERE shop_id = %s
-        ORDER BY created_at DESC, id DESC
-        LIMIT 50
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    res = client.table("notifications").select("id, shop_id, user_id, title, message, type, is_read, created_at").eq("shop_id", shop_id).order("created_at", desc=True).order("id", desc=True).limit(50).execute()
+    return res.data or []
 
 def delete_notification(shop_id: int, notification_id: int) -> bool:
-    result = execute_query(
-        """
-        DELETE FROM notifications
-        WHERE shop_id = %s AND id = %s
-        """,
-        (shop_id, notification_id),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("notifications").delete().eq("shop_id", shop_id).eq("id", notification_id).execute()
+    return bool(res.data)
 
 def clear_all_notifications(shop_id: int) -> bool:
-    result = execute_query(
-        """
-        DELETE FROM notifications
-        WHERE shop_id = %s
-        """,
-        (shop_id,),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("notifications").delete().eq("shop_id", shop_id).execute()
+    return bool(res.data)
 
 def mark_notification_read(shop_id: int, notification_id: int) -> bool:
-    result = execute_query(
-        """
-        UPDATE notifications
-        SET is_read = 1
-        WHERE shop_id = %s AND id = %s
-        """,
-        (shop_id, notification_id),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("notifications").update({"is_read": True}).eq("shop_id", shop_id).eq("id", notification_id).execute()
+    return bool(res.data)
 
 def batch_mark_read(shop_id: int, notification_ids: list[int]) -> int:
     if not notification_ids:
         return 0
-    placeholders = ", ".join(["%s"] * len(notification_ids))
-    params = [shop_id] + list(notification_ids)
-    result = execute_query(
-        f"""
-        UPDATE notifications
-        SET is_read = 1
-        WHERE shop_id = %s AND id IN ({placeholders})
-        """,
-        tuple(params),
-    )
-    return result["rowcount"]
+    client = get_supabase()
+    res = client.table("notifications").update({"is_read": True}).eq("shop_id", shop_id).in_("id", notification_ids).execute()
+    return len(res.data or [])
 
 def batch_delete_notifications(shop_id: int, notification_ids: list[int]) -> int:
     if not notification_ids:
         return 0
-    placeholders = ", ".join(["%s"] * len(notification_ids))
-    params = [shop_id] + list(notification_ids)
-    result = execute_query(
-        f"""
-        DELETE FROM notifications
-        WHERE shop_id = %s AND id IN ({placeholders})
-        """,
-        tuple(params),
-    )
-    return result["rowcount"]
+    client = get_supabase()
+    res = client.table("notifications").delete().eq("shop_id", shop_id).in_("id", notification_ids).execute()
+    return len(res.data or [])
 
 def mark_all_read(shop_id: int) -> bool:
-    result = execute_query(
-        """
-        UPDATE notifications
-        SET is_read = 1
-        WHERE shop_id = %s
-        """,
-        (shop_id,),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("notifications").update({"is_read": True}).eq("shop_id", shop_id).execute()
+    return bool(res.data)

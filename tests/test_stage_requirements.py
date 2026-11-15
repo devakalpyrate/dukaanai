@@ -4,7 +4,7 @@ from decimal import Decimal
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase
 from app.services.business_logic import CustomerService, ProductService, InventoryService, TransactionService
 from app.services.intent_executor import IntentExecutor
 from app.queries import customer as customer_queries
@@ -42,17 +42,19 @@ class TestDukaanAIIntelligentResolutionAndAuth(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        execute_query("SET FOREIGN_KEY_CHECKS = 0")
-        for sid in [cls.shop1_id, cls.shop2_id]:
-            execute_query("DELETE FROM inventory_logs WHERE shop_id = %s", (sid,))
-            execute_query("DELETE FROM inventory WHERE shop_id = %s", (sid,))
-            execute_query("DELETE FROM transactions WHERE shop_id = %s", (sid,))
-            execute_query("DELETE FROM products WHERE shop_id = %s", (sid,))
-            execute_query("DELETE FROM customers WHERE shop_id = %s", (sid,))
-            execute_query("DELETE FROM shops WHERE id = %s", (sid,))
-        for uid in [cls.owner1_data["user_id"], cls.owner2_data["user_id"]]:
-            execute_query("DELETE FROM users WHERE id = %s", (uid,))
-        execute_query("SET FOREIGN_KEY_CHECKS = 1")
+        sb = get_supabase()
+        try:
+            for sid in [cls.shop1_id, cls.shop2_id]:
+                sb.table("inventory_logs").delete().eq("shop_id", sid).execute()
+                sb.table("inventory").delete().eq("shop_id", sid).execute()
+                sb.table("transactions").delete().eq("shop_id", sid).execute()
+                sb.table("products").delete().eq("shop_id", sid).execute()
+                sb.table("customers").delete().eq("shop_id", sid).execute()
+                sb.table("shops").delete().eq("id", sid).execute()
+            for uid in [cls.owner1_data["user_id"], cls.owner2_data["user_id"]]:
+                sb.table("users").delete().eq("id", uid).execute()
+        except Exception:
+            pass
 
     def test_01_unauthenticated_requests_blocked(self):
         res1 = self.client.post("/api/voice/transcribe")
@@ -203,6 +205,56 @@ class TestDukaanAIIntelligentResolutionAndAuth(unittest.TestCase):
         self.assertNotEqual(tx_a["id"], tx_b["id"])
         self.assertFalse(tx_a["is_duplicate_replay"])
         self.assertFalse(tx_b["is_duplicate_replay"])
+
+    def test_13_phase2_autonomous_market_price_discovery(self):
+        intent_payload = {
+            "intent": "inventory_update",
+            "action": "add_stock",
+            "shop_id": self.shop1_id,
+            "parameters": {
+                "product_name": "Aata",
+                "quantity": "5",
+                "unit": "kg",
+            },
+            "original_text": "Aata 5 kilo add kar do",
+            "requires_confirmation": False,
+            "clarification_needed": False,
+        }
+        res = IntentExecutor.execute(intent_payload, confirmed=False)
+        self.assertTrue(res.success)
+        self.assertFalse(res.clarification_needed)
+        self.assertIn("Aata", res.message)
+        prods = product_queries.search_products(self.shop1_id, "Aata")
+        self.assertTrue(len(prods) > 0)
+        self.assertEqual(Decimal(str(prods[0]["price"])), Decimal("42.00"))
+
+    def test_14_phase3_supplier_milk_order_intent(self):
+        intent_payload = {
+            "intent": "supplier_order",
+            "action": "order_from_supplier",
+            "shop_id": self.shop1_id,
+            "parameters": {
+                "item": "doodh",
+                "quantity": "20",
+                "unit": "packet",
+                "timing": "kal subah",
+            },
+            "original_text": "Kal subah ke liye 20 packet doodh order kar do",
+            "requires_confirmation": False,
+            "clarification_needed": False,
+        }
+        res = IntentExecutor.execute(intent_payload, confirmed=False)
+        self.assertTrue(res.success)
+        self.assertIn("whatsapp_url", res.result)
+        self.assertIn("api.whatsapp.com/send", res.result["whatsapp_url"])
+        self.assertIn("20 packet", res.spoken_message.lower())
+
+    def test_15_customer_invoice_pdf_generation(self):
+        cust = customer_queries.search_customers(self.shop1_id, "New Auto Customer")[0]
+        res = self.client.get(f"/api/customers/{cust['id']}/invoice.pdf?shop_id={self.shop1_id}")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.headers["content-type"], "application/pdf")
+        self.assertTrue(res.content.startswith(b"%PDF"))
 
 if __name__ == "__main__":
     unittest.main()

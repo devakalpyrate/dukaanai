@@ -1,6 +1,6 @@
+from decimal import Decimal
 from typing import Any
-
-from app.database.query import execute_query, fetch_all, fetch_one
+from app.database.supabase_client import get_supabase, get_next_id
 
 def create_inventory_record(
     shop_id: int,
@@ -8,139 +8,125 @@ def create_inventory_record(
     quantity: float = 0,
     low_stock_limit: float = 0,
 ) -> int:
-    result = execute_query(
-        """
-        INSERT INTO inventory (shop_id, product_id, quantity, low_stock_limit)
-        VALUES (%s, %s, %s, %s)
-        """,
-        (shop_id, product_id, quantity, low_stock_limit),
-    )
-    return result["lastrowid"]
+    client = get_supabase()
+    payload = {
+        "id": get_next_id("inventory"),
+        "shop_id": shop_id,
+        "product_id": product_id,
+        "quantity": quantity,
+        "low_stock_limit": low_stock_limit
+    }
+    res = client.table("inventory").insert(payload).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]["id"]
+    return 0
 
 def get_inventory_by_id(inventory_id: int) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, shop_id, product_id, quantity, low_stock_limit
-        FROM inventory
-        WHERE id = %s
-        """,
-        (inventory_id,),
-    )
+    client = get_supabase()
+    res = client.table("inventory").select("id, shop_id, product_id, quantity, low_stock_limit").eq("id", inventory_id).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_inventory_by_product(
     shop_id: int,
     product_id: int,
 ) -> dict[str, Any] | None:
-    return fetch_one(
-        """
-        SELECT id, shop_id, product_id, quantity, low_stock_limit
-        FROM inventory
-        WHERE shop_id = %s AND product_id = %s
-        ORDER BY id
-        LIMIT 1
-        """,
-        (shop_id, product_id),
-    )
+    client = get_supabase()
+    res = client.table("inventory").select("id, shop_id, product_id, quantity, low_stock_limit").eq("shop_id", shop_id).eq("product_id", product_id).limit(1).execute()
+    return res.data[0] if res.data else None
 
 def get_inventory_by_shop(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT
-            i.id,
-            i.shop_id,
-            i.product_id,
-            p.name AS product_name,
-            p.unit,
-            p.price AS price_per_unit,
-            i.quantity,
-            i.low_stock_limit,
-            ROUND(i.quantity * p.price, 2) AS total_value
-        FROM inventory AS i
-        JOIN products AS p ON p.id = i.product_id
-        WHERE i.shop_id = %s
-        ORDER BY p.name, i.id
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    inv_res = client.table("inventory").select("id, shop_id, product_id, quantity, low_stock_limit").eq("shop_id", shop_id).execute()
+    inv_items = inv_res.data or []
+    if not inv_items:
+        return []
+
+    prod_res = client.table("products").select("id, name, unit, price").eq("shop_id", shop_id).execute()
+    prod_map = {p["id"]: p for p in (prod_res.data or [])}
+
+    results = []
+    for item in inv_items:
+        p = prod_map.get(item["product_id"])
+        if not p:
+            continue
+        qty = Decimal(str(item.get("quantity") or "0.00"))
+        limit = Decimal(str(item.get("low_stock_limit") or "0.00"))
+        price = Decimal(str(p.get("price") or "0.00"))
+        total_val = round(qty * price, 2)
+        results.append({
+            "id": item["id"],
+            "shop_id": item["shop_id"],
+            "product_id": item["product_id"],
+            "product_name": p["name"],
+            "unit": p.get("unit") or "unit",
+            "price_per_unit": price,
+            "quantity": qty,
+            "low_stock_limit": limit,
+            "total_value": total_val,
+        })
+    results.sort(key=lambda x: (x["product_name"], x["id"]))
+    return results
 
 def update_stock_quantity(inventory_id: int, quantity: float) -> bool:
-    result = execute_query(
-        """
-        UPDATE inventory
-        SET quantity = %s
-        WHERE id = %s
-        """,
-        (quantity, inventory_id),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("inventory").update({"quantity": quantity}).eq("id", inventory_id).execute()
+    return bool(res.data)
 
 def change_stock_quantity(
     shop_id: int,
     product_id: int,
     quantity_change: float,
 ) -> bool:
-    from app.database.db_connection import get_connection
-
-    connection = get_connection()
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                UPDATE inventory
-                SET quantity = quantity + %s
-                WHERE shop_id = %s
-                  AND product_id = %s
-                  AND quantity + %s >= 0
-                """,
-                (quantity_change, shop_id, product_id, quantity_change),
-            )
-            affected = cursor.rowcount
-        connection.commit()
-        return affected > 0
-    except Exception:
-        connection.rollback()
-        raise
-    finally:
-        connection.close()
+    client = get_supabase()
+    existing = get_inventory_by_product(shop_id, product_id)
+    if not existing:
+        return False
+    curr_qty = float(existing.get("quantity") or 0.0)
+    new_qty = curr_qty + float(quantity_change)
+    if new_qty < 0:
+        return False
+    res = client.table("inventory").update({"quantity": new_qty}).eq("id", existing["id"]).execute()
+    return bool(res.data)
 
 def update_low_stock_limit(
     shop_id: int,
     product_id: int,
     low_stock_limit: float,
 ) -> bool:
-    result = execute_query(
-        """
-        UPDATE inventory
-        SET low_stock_limit = %s
-        WHERE shop_id = %s AND product_id = %s
-        """,
-        (low_stock_limit, shop_id, product_id),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("inventory").update({"low_stock_limit": low_stock_limit}).eq("shop_id", shop_id).eq("product_id", product_id).execute()
+    return bool(res.data)
 
 def get_low_stock_items(shop_id: int) -> list[dict[str, Any]]:
-    return fetch_all(
-        """
-        SELECT
-            i.id,
-            i.shop_id,
-            i.product_id,
-            p.name AS product_name,
-            p.unit,
-            i.quantity,
-            i.low_stock_limit
-        FROM inventory AS i
-        JOIN products AS p ON p.id = i.product_id
-        WHERE i.shop_id = %s
-          AND i.quantity <= i.low_stock_limit
-        ORDER BY p.name, i.id
-        """,
-        (shop_id,),
-    )
+    client = get_supabase()
+    inv_res = client.table("inventory").select("id, shop_id, product_id, quantity, low_stock_limit").eq("shop_id", shop_id).execute()
+    inv_items = inv_res.data or []
+    if not inv_items:
+        return []
+
+    prod_res = client.table("products").select("id, name, unit").eq("shop_id", shop_id).execute()
+    prod_map = {p["id"]: p for p in (prod_res.data or [])}
+
+    results = []
+    for item in inv_items:
+        qty = Decimal(str(item.get("quantity") or "0.00"))
+        limit = Decimal(str(item.get("low_stock_limit") or "0.00"))
+        if qty <= limit:
+            p = prod_map.get(item["product_id"])
+            if p:
+                results.append({
+                    "id": item["id"],
+                    "shop_id": item["shop_id"],
+                    "product_id": item["product_id"],
+                    "product_name": p["name"],
+                    "unit": p.get("unit") or "unit",
+                    "quantity": qty,
+                    "low_stock_limit": limit,
+                })
+    results.sort(key=lambda x: (x["product_name"], x["id"]))
+    return results
 
 def delete_inventory_record(inventory_id: int) -> bool:
-    result = execute_query(
-        "DELETE FROM inventory WHERE id = %s",
-        (inventory_id,),
-    )
-    return result["rowcount"] > 0
+    client = get_supabase()
+    res = client.table("inventory").delete().eq("id", inventory_id).execute()
+    return bool(res.data)

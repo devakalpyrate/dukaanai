@@ -31,10 +31,13 @@ from app.queries import notification as notification_queries
 from app.queries import product as product_queries
 from app.queries import settings as settings_queries
 from app.queries import shops as shop_queries
+from app.queries import supplier as supplier_queries
 from app.queries import transaction as transaction_queries
 from app.queries import user as user_queries
 from app.services.business_logic import CustomerService, InventoryService, ProductService, TransactionService
 from app.services.intent_executor import IntentExecutor
+from app.services.pdf_generator import generate_customer_ledger_pdf
+from app.services.price_discovery import get_market_price
 
 from app.security import config as sec_config
 from app.security.config import (
@@ -91,6 +94,7 @@ app = FastAPI(
     title="DukaanAI API",
     description="Production-hardened Backend API for DukaanAI Smart Shop Assistant",
     version="1.0.0",
+    debug=False,
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url=None,
@@ -360,51 +364,60 @@ def register_endpoint(request: Request, payload: RegisterPayload):
                 detail="Invalid or expired confirmation code (OTP). Please check and try again.",
             )
     
-    hashed_pwd = hash_password(payload.password)
-    user_id = user_queries.create_user(
-        name=payload.name.strip(),
-        email=clean_email,
-        password_hash=hashed_pwd,
-        phone=clean_phone or None,
-    )
-    
-    shop_id = shop_queries.create_shop(
-        owner_id=user_id,
-        shop_name=payload.shop_name.strip(),
-        address=(payload.address or "").strip() or None,
-    )
-
-    settings_queries.upsert_settings(
-        shop_id=shop_id,
-        user_id=user_id,
-        phone=clean_phone,
-        shop_name=payload.shop_name.strip(),
-        shop_address=(payload.address or "").strip(),
-    )
-
     try:
-        notification_queries.create_notification(
+        hashed_pwd = hash_password(payload.password)
+        user_id = user_queries.create_user(
+            name=payload.name.strip(),
+            email=clean_email,
+            password_hash=hashed_pwd,
+            phone=clean_phone or None,
+        )
+        
+        shop_id = shop_queries.create_shop(
+            owner_id=user_id,
+            shop_name=payload.shop_name.strip(),
+            address=(payload.address or "").strip() or None,
+        )
+
+        settings_queries.upsert_settings(
             shop_id=shop_id,
             user_id=user_id,
-            title="Welcome to DukaanAI!",
-            message="Your voice khata and digital ledger are active. You can record transactions with voice or keyboard.",
-            notification_type="system",
+            phone=clean_phone,
+            shop_name=payload.shop_name.strip(),
+            shop_address=(payload.address or "").strip(),
         )
-        notification_queries.create_notification(
-            shop_id=shop_id,
-            user_id=user_id,
-            title="Digital QR & UPI Ready",
-            message="Your store QR code is ready to receive instant payments from customers.",
-            notification_type="payment",
+
+        try:
+            notification_queries.create_notification(
+                shop_id=shop_id,
+                user_id=user_id,
+                title="Welcome to DukaanAI!",
+                message="Your voice khata and digital ledger are active. You can record transactions with voice or keyboard.",
+                notification_type="system",
+            )
+            notification_queries.create_notification(
+                shop_id=shop_id,
+                user_id=user_id,
+                title="Digital QR & UPI Ready",
+                message="Your store QR code is ready to receive instant payments from customers.",
+                notification_type="payment",
+            )
+        except Exception:
+            pass
+        
+        token = create_access_token({
+            "sub": user_id,
+            "shop_id": shop_id,
+            "email": clean_email,
+        })
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Registration error: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to create your account. Please try again.",
         )
-    except Exception:
-        pass
-    
-    token = create_access_token({
-        "sub": user_id,
-        "shop_id": shop_id,
-        "email": clean_email,
-    })
     
     return AuthResponse(
         success=True,
@@ -438,7 +451,7 @@ def login_endpoint(request: Request, payload: LoginPayload):
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid email/mobile number or password.",
+            detail="Unable to log in. Check your credentials and try again.",
         )
     
     if payload.otp:
@@ -465,7 +478,7 @@ def login_endpoint(request: Request, payload: LoginPayload):
         if not payload.password or not verify_password(payload.password, user["password"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email/mobile number or password.",
+                detail="Unable to log in. Check your credentials and try again.",
             )
     
     user_id = user["id"]
@@ -555,26 +568,32 @@ def update_settings_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
     user_id = current_shop["user_id"]
-    settings_queries.upsert_settings(
-        shop_id=shop_id,
-        user_id=user_id,
-        upi_id=(payload.upi_id or "").strip(),
-        upi_pin=(payload.upi_pin or "").strip(),
-        phone=(payload.phone or "").strip(),
-        shop_name=(payload.shop_name or "").strip(),
-        shop_address=(payload.shop_address or "").strip(),
-        gstin=(payload.gstin or "").strip(),
-        theme=payload.theme or "dark",
-        language=payload.language or "hi",
-        low_stock_alert=payload.low_stock_alert if payload.low_stock_alert is not None else 1,
-    )
-    if payload.phone:
-        user_queries.update_user(user_id, phone=payload.phone.strip())
-    if payload.shop_name or payload.shop_address:
-        shop_queries.update_shop(shop_id, shop_name=payload.shop_name.strip() if payload.shop_name else None, address=payload.shop_address.strip() if payload.shop_address else None)
-    
-    updated = settings_queries.get_settings_by_shop(shop_id)
-    return {"success": True, "settings": updated, "message": "Settings saved successfully."}
+    try:
+        settings_queries.upsert_settings(
+            shop_id=shop_id,
+            user_id=user_id,
+            upi_id=(payload.upi_id or "").strip(),
+            upi_pin=(payload.upi_pin or "").strip(),
+            phone=(payload.phone or "").strip(),
+            shop_name=(payload.shop_name or "").strip(),
+            shop_address=(payload.shop_address or "").strip(),
+            gstin=(payload.gstin or "").strip(),
+            theme=payload.theme or "dark",
+            language=payload.language or "hi",
+            low_stock_alert=payload.low_stock_alert if payload.low_stock_alert is not None else 1,
+        )
+        if payload.phone:
+            user_queries.update_user(user_id, phone=payload.phone.strip())
+        if payload.shop_name or payload.shop_address:
+            shop_queries.update_shop(shop_id, shop_name=payload.shop_name.strip() if payload.shop_name else None, address=payload.shop_address.strip() if payload.shop_address else None)
+        
+        updated = settings_queries.get_settings_by_shop(shop_id)
+        return {"success": True, "settings": updated, "message": "Settings saved successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to update settings: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        raise HTTPException(status_code=400, detail="Unable to save settings. Please try again.") from exc
 
 @app.get(
     "/api/notifications",
@@ -823,12 +842,10 @@ async def transcribe_audio_endpoint(
         except HTTPException:
             raise
         except Exception as exc:
-            logger.error("Transcription execution error: %s", exc)
-            err_msg = str(exc)
-            clean_detail = err_msg if ("API key" in err_msg or "Speech-to-Text" in err_msg) else "Failed to transcribe audio. Please verify the audio file format."
+            logger.error("Transcription execution error: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=clean_detail,
+                detail="Unable to process your voice request. Please try again.",
             ) from exc
 
         return TranscriptionResponse(
@@ -882,10 +899,10 @@ async def speak_text_endpoint(
         out_file = synthesize_speech(clean_text)
         return FileResponse(out_file, media_type="audio/wav", filename="speech.wav")
     except Exception as exc:
-        logger.error("TTS generation error: %s", exc)
+        logger.error("TTS generation error: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Speech synthesis failed.",
+            detail="Unable to process your voice request. Please try again.",
         ) from exc
 
 @app.get(
@@ -925,10 +942,10 @@ def understand_intent_endpoint(
         )
         return UnderstandIntentResponseModel(**result)
     except Exception as exc:
-        logger.error("Unhandled error calling gRPC client: %s", exc)
+        logger.error("Unhandled error calling gRPC client: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Intent understanding service is temporarily unavailable. Please retry in a moment.",
+            detail="Service temporarily unavailable. Please try again later.",
         ) from exc
 
 @app.post(
@@ -955,10 +972,10 @@ def execute_action_endpoint(
         )
         return ActionExecutionResponseModel(**res.to_dict())
     except Exception as exc:
-        logger.error("Unexpected error in execute_action_endpoint: %s", exc)
+        logger.error("Unexpected error in execute_action_endpoint: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Business logic execution failed.",
+            detail="Service temporarily unavailable. Please try again later.",
         ) from exc
 
 @app.get("/api/customers")
@@ -1001,10 +1018,58 @@ def create_customer_endpoint(
 ):
     enforce_rate_limit(request, category="execute", user_id=str(current_shop["user_id"]))
     name = payload.get("name")
-    if not name:
+    if not name or not str(name).strip():
         raise HTTPException(status_code=400, detail="Customer name is required.")
-    cust = CustomerService.add_customer(current_shop["shop_id"], name, payload.get("phone"))
-    return {"success": True, "data": cust}
+    try:
+        cust = CustomerService.add_customer(current_shop["shop_id"], str(name).strip(), payload.get("phone"))
+        return {"success": True, "data": cust}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to create customer: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        raise HTTPException(status_code=400, detail="Unable to add customer. Please try again.") from exc
+
+@app.get("/api/customers/{customer_id}/invoice.pdf")
+def get_customer_invoice_pdf_endpoint(
+    customer_id: int,
+    request: Request,
+    shop_id: Optional[int] = Query(None),
+):
+    target_shop_id = shop_id
+    if not target_shop_id:
+        auth_hdr = request.headers.get("Authorization")
+        if auth_hdr and auth_hdr.startswith("Bearer "):
+            try:
+                payload = decode_access_token(auth_hdr.split(" ")[1])
+                target_shop_id = payload.get("shop_id")
+            except Exception:
+                pass
+    if not target_shop_id:
+        target_shop_id = 1
+
+    cust = customer_queries.get_customer_by_id(customer_id, shop_id=target_shop_id)
+    if not cust:
+        raise HTTPException(status_code=404, detail="Customer not found.")
+
+    sh_data = shop_queries.get_shop_by_id(target_shop_id) or {"shop_name": "Meri Dukaan"}
+    bal_info = customer_queries.get_customer_balance_in_db(target_shop_id, customer_id) or {}
+    txs = transaction_queries.get_transactions_by_customer(target_shop_id, customer_id)
+    st_settings = settings_queries.get_settings_by_shop(target_shop_id)
+    upi_id = st_settings.get("upi_id") if st_settings else None
+
+    pdf_bytes = generate_customer_ledger_pdf(
+        shop_data=sh_data,
+        customer_data=cust,
+        balance_info=bal_info,
+        transactions=txs,
+        store_upi_id=upi_id,
+    )
+    safe_name = cust.get("name", "customer").replace(" ", "_")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=khata_{safe_name}.pdf"},
+    )
 
 @app.get("/api/products")
 def get_products_endpoint(
@@ -1026,15 +1091,21 @@ def create_product_endpoint(
     price = payload.get("price")
     if not name or price is None:
         raise HTTPException(status_code=400, detail="Product name and price are required.")
-    prod = ProductService.add_product(
-        current_shop["shop_id"],
-        name,
-        price,
-        payload.get("unit"),
-        payload.get("quantity", 0),
-        payload.get("low_stock_limit", 5),
-    )
-    return {"success": True, "data": prod}
+    try:
+        prod = ProductService.add_product(
+            current_shop["shop_id"],
+            str(name).strip(),
+            price,
+            payload.get("unit"),
+            payload.get("quantity", 0),
+            payload.get("low_stock_limit", 5),
+        )
+        return {"success": True, "data": prod}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to create product: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        raise HTTPException(status_code=400, detail="Unable to add product. Please try again.") from exc
 
 @app.get("/api/transactions")
 def get_transactions_endpoint(
@@ -1053,6 +1124,61 @@ def get_inventory_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     inv = InventoryService.get_stock(current_shop["shop_id"])
     return {"success": True, "data": inv}
+
+@app.get("/api/suppliers")
+def get_suppliers_endpoint(
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
+    sups = supplier_queries.get_suppliers_by_shop(current_shop["shop_id"])
+    return {"success": True, "data": sups}
+
+@app.post("/api/suppliers")
+def create_supplier_endpoint(
+    request: Request,
+    payload: Dict[str, Any],
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="execute", user_id=str(current_shop["user_id"]))
+    s_name = payload.get("name")
+    if not s_name:
+        raise HTTPException(status_code=400, detail="Supplier name is required.")
+    try:
+        s_id = supplier_queries.create_supplier(
+            shop_id=current_shop["shop_id"],
+            name=s_name,
+            category=payload.get("category", "general"),
+            phone=payload.get("phone"),
+        )
+        new_sup = supplier_queries.get_supplier_by_id(s_id, current_shop["shop_id"])
+        return {"success": True, "data": new_sup}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to create supplier: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        raise HTTPException(status_code=400, detail="Unable to add supplier. Please try again.") from exc
+
+@app.delete("/api/suppliers/{supplier_id}")
+def delete_supplier_endpoint(
+    supplier_id: int,
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="execute", user_id=str(current_shop["user_id"]))
+    supplier_queries.delete_supplier(supplier_id, current_shop["shop_id"])
+    return {"success": True, "message": "Supplier deleted successfully."}
+
+@app.get("/api/market-price")
+def get_market_price_endpoint(
+    request: Request,
+    product: str = Query(..., min_length=1, max_length=100),
+    unit: Optional[str] = Query(None, max_length=20),
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
+    price_info = get_market_price(product, unit)
+    return {"success": True, "data": price_info}
 
 @app.get("/api/payments/qr-code")
 def generate_qr_code_endpoint(
