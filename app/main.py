@@ -78,10 +78,11 @@ logger = logging.getLogger("dukaanai")
 async def lifespan(app: FastAPI):
     logger.info("Starting DukaanAI Backend with hardened production security...")
 
-    if not os.getenv("VERCEL"):
-        grpc_server = get_grpc_server_manager()
+    if not os.getenv("VERCEL") and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
         try:
-            grpc_server.start()
+            grpc_server = get_grpc_server_manager()
+            if grpc_server and hasattr(grpc_server, "start"):
+                grpc_server.start()
         except Exception as exc:
             logger.error("Failed to start gRPC LLM Service: %s", exc)
 
@@ -94,8 +95,11 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down DukaanAI Backend & gRPC services...")
-    if not os.getenv("VERCEL"):
-        close_grpc_resources()
+    if not os.getenv("VERCEL") and not os.getenv("AWS_LAMBDA_FUNCTION_NAME"):
+        try:
+            close_grpc_resources()
+        except Exception as exc:
+            logger.error("Error closing gRPC resources: %s", exc)
     logger.info("DukaanAI Backend shutdown completed.")
 
 app = FastAPI(

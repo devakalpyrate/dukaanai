@@ -4,7 +4,7 @@
     "app": {
       "root": ".",
       "framework": "fastapi",
-      "entrypoint": "app.py"
+      "entrypoint": "app:app"
     }
   },
   "rewrites": [
