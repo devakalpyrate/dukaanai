@@ -3,13 +3,13 @@ import uuid
 from decimal import Decimal
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.database.supabase_client import get_supabase
-from app.services.business_logic import CustomerService, ProductService, InventoryService, TransactionService
-from app.services.intent_executor import IntentExecutor
-from app.queries import customer as customer_queries
-from app.queries import product as product_queries
-from app.queries import inventory_logs as log_queries
+from backend.main import app
+from backend.database.supabase_client import get_supabase
+from backend.services.business_logic import CustomerService, ProductService, InventoryService, TransactionService
+from backend.services.intent_executor import IntentExecutor
+from backend.queries import customer as customer_queries
+from backend.queries import product as product_queries
+from backend.queries import inventory_logs as log_queries
 
 class TestDukaanAIIntelligentResolutionAndAuth(unittest.TestCase):
     @classmethod

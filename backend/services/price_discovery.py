@@ -190,7 +190,7 @@ def fetch_serpapi_price(product_name: str, requested_unit: Optional[str] = None)
     return None
 
 def get_market_price(product_name: str, requested_unit: Optional[str] = None) -> Dict[str, Any]:
-    from app.queries import global_prices as global_price_queries
+    from backend.queries import global_prices as global_price_queries
     try:
         db_price = global_price_queries.get_global_price(product_name)
         if db_price:

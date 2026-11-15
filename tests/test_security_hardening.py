@@ -4,11 +4,11 @@ import time
 from decimal import Decimal
 from fastapi.testclient import TestClient
 
-from app.main import app
-from app.database.supabase_client import get_supabase
-from app.security.config import DEFAULT_RATE_LIMITS
-from app.security.rate_limiter import get_rate_limiter
-from app.authentication.auth import create_access_token
+from backend.main import app
+from backend.database.supabase_client import get_supabase
+from backend.security.config import DEFAULT_RATE_LIMITS
+from backend.security.rate_limiter import get_rate_limiter
+from backend.authentication.auth import create_access_token
 
 class TestProductionSecurityHardening(unittest.TestCase):
     @classmethod
@@ -98,7 +98,7 @@ class TestProductionSecurityHardening(unittest.TestCase):
         limiter.release_concurrency(concurrency_key)
 
     def test_07_redaction_utility(self):
-        from app.security.logger import redact_sensitive_dict
+        from backend.security.logger import redact_sensitive_dict
         sample = {
             "password": "super_secret_123",
             "access_token": "jwt.header.payload",
@@ -146,7 +146,7 @@ class TestProductionSecurityHardening(unittest.TestCase):
     def test_10_oversized_audio_rejected(self):
         headers = {"Authorization": f"Bearer {self.token}"}
         huge_chunk = b"X" * (1024 * 1024)
-        from app.security import config
+        from backend.security import config
         original_max = config.MAX_AUDIO_UPLOAD_BYTES
         config.MAX_AUDIO_UPLOAD_BYTES = 500 * 1024
         try:
@@ -158,7 +158,7 @@ class TestProductionSecurityHardening(unittest.TestCase):
             config.MAX_AUDIO_UPLOAD_BYTES = original_max
 
     def test_11_groq_exponential_backoff_jitter(self):
-        from app.models.ai import GroqLLMClient
+        from backend.models.ai import GroqLLMClient
         client = GroqLLMClient()
         self.assertTrue(hasattr(client, "understand_intent"))
 

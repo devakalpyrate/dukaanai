@@ -17,51 +17,51 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.authentication.auth import (
+from backend.authentication.auth import (
     create_access_token,
     decode_access_token,
     hash_password,
     verify_password,
 )
 try:
-    from app.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
+    from backend.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
 except Exception:
     close_grpc_resources = lambda: None
     get_grpc_client = lambda: None
     get_grpc_server_manager = lambda: None
-from app.models.ai import get_llm_client
-from app.models.voice import get_audio_duration, get_model_info, load_model, transcribe_audio
-from app.queries import customer as customer_queries
-from app.queries import notification as notification_queries
-from app.queries import product as product_queries
-from app.queries import settings as settings_queries
-from app.queries import shops as shop_queries
-from app.queries import supplier as supplier_queries
-from app.queries import transaction as transaction_queries
-from app.queries import user as user_queries
-from app.services.business_logic import CustomerService, InventoryService, ProductService, TransactionService
-from app.services.intent_executor import IntentExecutor
-from app.services.pdf_generator import generate_customer_ledger_pdf
-from app.services.price_discovery import get_market_price
-from app.services.email_service import mask_email, send_otp_email
+from backend.models.ai import get_llm_client
+from backend.models.voice import get_audio_duration, get_model_info, load_model, transcribe_audio
+from backend.queries import customer as customer_queries
+from backend.queries import notification as notification_queries
+from backend.queries import product as product_queries
+from backend.queries import settings as settings_queries
+from backend.queries import shops as shop_queries
+from backend.queries import supplier as supplier_queries
+from backend.queries import transaction as transaction_queries
+from backend.queries import user as user_queries
+from backend.services.business_logic import CustomerService, InventoryService, ProductService, TransactionService
+from backend.services.intent_executor import IntentExecutor
+from backend.services.pdf_generator import generate_customer_ledger_pdf
+from backend.services.price_discovery import get_market_price
+from backend.services.email_service import mask_email, send_otp_email
 
-from app.security import config as sec_config
-from app.security.config import (
+from backend.security import config as sec_config
+from backend.security.config import (
     ALLOWED_AUDIO_EXTENSIONS,
     ALLOWED_AUDIO_MIME_TYPES,
     CORS_ALLOWED_ORIGINS,
     MAX_AUDIO_DURATION_SEC,
     MAX_CONCURRENT_VOICE_PER_USER,
 )
-from app.security.dependencies import enforce_rate_limit
-from app.security.exceptions import (
+from backend.security.dependencies import enforce_rate_limit
+from backend.security.exceptions import (
     generic_exception_handler,
     http_exception_handler,
     validation_exception_handler,
 )
-from app.security.logger import StructuredLogFormatter
-from app.security.middleware import SecurityHeadersMiddleware
-from app.security.rate_limiter import get_rate_limiter
+from backend.security.logger import StructuredLogFormatter
+from backend.security.middleware import SecurityHeadersMiddleware
+from backend.security.rate_limiter import get_rate_limiter
 
 log_handler = logging.StreamHandler()
 log_handler.setFormatter(StructuredLogFormatter())
@@ -126,7 +126,9 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-static_dir = Path(__file__).resolve().parent / "static"
+frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+backend_static = Path(__file__).resolve().parent / "static"
+static_dir = frontend_dist if (frontend_dist / "index.html").exists() else backend_static
 assets_dir = static_dir / "assets"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -973,7 +975,7 @@ async def speak_text_endpoint(
                 detail="Store speech content cannot contain internal system or technical architecture terms.",
             )
     try:
-        from app.models.tts import synthesize_speech
+        from backend.models.tts import synthesize_speech
         out_file = synthesize_speech(clean_text)
         return FileResponse(out_file, media_type="audio/wav", filename="speech.wav")
     except Exception as exc:
@@ -1012,7 +1014,7 @@ def understand_intent_endpoint(
     try:
         verified_shop_id = current_shop["shop_id"]
         if os.getenv("VERCEL"):
-            from app.models.ai import GroqLLMClient
+            from backend.models.ai import GroqLLMClient
             llm = GroqLLMClient()
             contract = llm.understand_intent(
                 text=payload.text,

@@ -3,14 +3,14 @@ import time
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.database.supabase_client import get_supabase, get_next_id
-from app.queries import customer as customer_queries
-from app.queries import inventory as inventory_queries
-from app.queries import inventory_logs as log_queries
-from app.queries import product as product_queries
-from app.queries import shops as shop_queries
-from app.queries import transaction as transaction_queries
-from app.services.validators import (
+from backend.database.supabase_client import get_supabase, get_next_id
+from backend.queries import customer as customer_queries
+from backend.queries import inventory as inventory_queries
+from backend.queries import inventory_logs as log_queries
+from backend.queries import product as product_queries
+from backend.queries import shops as shop_queries
+from backend.queries import transaction as transaction_queries
+from backend.services.validators import (
     ValidationError,
     validate_decimal,
     validate_id,

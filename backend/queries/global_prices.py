@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from app.database.supabase_client import get_supabase
+from backend.database.supabase_client import get_supabase
 
 def get_global_price(item_key: str) -> Optional[Dict[str, Any]]:
     client = get_supabase()

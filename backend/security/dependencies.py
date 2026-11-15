@@ -1,7 +1,7 @@
 from typing import Any, Dict
 from fastapi import HTTPException, Request, status
-from app.security.config import DEFAULT_RATE_LIMITS
-from app.security.rate_limiter import get_rate_limiter
+from backend.security.config import DEFAULT_RATE_LIMITS
+from backend.security.rate_limiter import get_rate_limiter
 
 def enforce_rate_limit(
     request: Request,

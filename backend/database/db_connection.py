@@ -1,4 +1,4 @@
-from app.database.supabase_client import get_supabase
+from backend.database.supabase_client import get_supabase
 
 def get_connection():
     return get_supabase()

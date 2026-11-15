@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Sequence
 from typing import Any
-from app.database.supabase_client import get_supabase
+from backend.database.supabase_client import get_supabase
 
 def fetch_one(sql: str, params: Sequence[Any] | None = None) -> dict[str, Any] | None:
     return None

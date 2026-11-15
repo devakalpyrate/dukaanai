@@ -1,5 +1,5 @@
 from typing import Any, Optional
-from app.database.supabase_client import get_supabase, get_next_id
+from backend.database.supabase_client import get_supabase, get_next_id
 
 def get_settings_by_shop(shop_id: int) -> Optional[dict[str, Any]]:
     client = get_supabase()

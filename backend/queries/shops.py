@@ -1,5 +1,5 @@
 from typing import Any
-from app.database.supabase_client import get_supabase, get_next_id
+from backend.database.supabase_client import get_supabase, get_next_id
 
 def create_shop(owner_id: int, shop_name: str, address: str | None = None) -> int:
     client = get_supabase()

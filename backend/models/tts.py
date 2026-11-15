@@ -4,7 +4,7 @@ import tempfile
 import requests
 from dotenv import load_dotenv
 from pathlib import Path
-from app.services.language_detection import detect_language
+from backend.services.language_detection import detect_language
 
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)

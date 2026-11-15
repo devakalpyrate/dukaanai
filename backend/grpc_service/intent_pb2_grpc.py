@@ -4,7 +4,7 @@ import grpc
 import warnings
 
 try:
-    from app.grpc_service import intent_pb2 as intent__pb2
+    from backend.grpc_service import intent_pb2 as intent__pb2
 except ImportError:
     import intent_pb2 as intent__pb2
 

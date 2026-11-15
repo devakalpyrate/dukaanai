@@ -6,10 +6,10 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 try:
-    from app import app
+    from backend.main import app
 except Exception:
     try:
-        from app.main import app
+        from app import app
     except Exception as exc:
         import traceback
         from fastapi import FastAPI

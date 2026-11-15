@@ -5,15 +5,15 @@ from fastapi.testclient import TestClient
 from fastapi import FastAPI, Request
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.main import app
-from app.authentication.auth import create_access_token
-from app.security.exceptions import (
+from backend.main import app
+from backend.authentication.auth import create_access_token
+from backend.security.exceptions import (
     http_exception_handler,
     generic_exception_handler,
     sanitize_public_error_message,
     create_error_response,
 )
-from app.security.logger import (
+from backend.security.logger import (
     redact_sensitive_string,
     redact_sensitive_dict,
     StructuredLogFormatter,
@@ -38,7 +38,7 @@ class TestErrorHandlingSecurity(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        from app.database.supabase_client import get_supabase
+        from backend.database.supabase_client import get_supabase
         sb = get_supabase()
         try:
             sb.table("notifications").delete().eq("shop_id", cls.shop_id).execute()

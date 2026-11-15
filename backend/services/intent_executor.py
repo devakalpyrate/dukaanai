@@ -2,14 +2,14 @@ import re
 from decimal import Decimal
 from typing import Any, Dict, Optional
 from urllib.parse import quote
-from app.queries import customer as customer_queries
-from app.queries import notification as notification_queries
-from app.queries import product as product_queries
-from app.queries import shops as shop_queries
-from app.queries import supplier as supplier_queries
-from app.queries import transaction as transaction_queries
-from app.services.price_discovery import get_market_price
-from app.services.business_logic import (
+from backend.queries import customer as customer_queries
+from backend.queries import notification as notification_queries
+from backend.queries import product as product_queries
+from backend.queries import shops as shop_queries
+from backend.queries import supplier as supplier_queries
+from backend.queries import transaction as transaction_queries
+from backend.services.price_discovery import get_market_price
+from backend.services.business_logic import (
     AmbiguousEntityError,
     BusinessLogicError,
     CustomerService,
@@ -21,8 +21,8 @@ from app.services.business_logic import (
     ShopVerificationService,
     TransactionService,
 )
-from app.services.validators import NegativeContradictionError, ValidationError
-from app.services.language_detection import detect_language, get_localized_confirmation
+from backend.services.validators import NegativeContradictionError, ValidationError
+from backend.services.language_detection import detect_language, get_localized_confirmation
 
 _pending_contexts: Dict[int, Dict[str, Any]] = {}
 

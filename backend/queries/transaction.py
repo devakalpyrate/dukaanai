@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Any
-from app.database.supabase_client import get_supabase, get_next_id
+from backend.database.supabase_client import get_supabase, get_next_id
 
 def create_transaction(
     shop_id: int,

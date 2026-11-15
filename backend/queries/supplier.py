@@ -1,5 +1,5 @@
 from typing import Any, List, Optional
-from app.database.supabase_client import get_supabase, get_next_id
+from backend.database.supabase_client import get_supabase, get_next_id
 
 def create_supplier(
     shop_id: int,

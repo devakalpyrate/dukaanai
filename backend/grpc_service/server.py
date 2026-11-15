@@ -7,8 +7,8 @@ from typing import Optional
 
 import grpc
 
-from app.grpc_service import intent_pb2, intent_pb2_grpc
-from app.models.ai import CanonicalIntentContract, GroqLLMClient, get_llm_client
+from backend.grpc_service import intent_pb2, intent_pb2_grpc
+from backend.models.ai import CanonicalIntentContract, GroqLLMClient, get_llm_client
 
 logger = logging.getLogger(__name__)
 
