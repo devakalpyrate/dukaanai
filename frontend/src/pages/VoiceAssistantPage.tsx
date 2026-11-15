@@ -48,9 +48,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
 
   const [transcript, setTranscript] = useState<string>('');
   const [textInput, setTextInput] = useState<string>('');
-  const [statusSubtitle, setStatusSubtitle] = useState<string>(
-    'Tap the microphone or choose a quick prompt to execute store transactions.'
-  );
+  const [statusSubtitle, setStatusSubtitle] = useState<string>('');
 
   const [progressPercent, setProgressPercent] = useState<number>(0);
   const [progressLabel, setProgressLabel] = useState<string>('Ready for store instruction');
@@ -517,7 +515,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       case 'error': return 'Request Failed';
       case 'idle':
       default:
-        return 'Tap mic or click prompt';
+        return 'Voice Ready';
     }
   };
 
@@ -599,27 +597,31 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
         </div>
 
         {/* 2. CENTER ORB & WAVEFORM */}
-        <div className="flex flex-col items-center justify-center my-auto shrink min-h-0">
-          <div className="scale-85 sm:scale-95 md:scale-105 transition-transform origin-center">
+        <div className="flex-1 flex flex-col items-center justify-center min-h-0 my-auto">
+          <div className="scale-80 sm:scale-95 md:scale-105 transition-transform origin-center">
             <Orb state={state} audioLevel={audioLevel} />
           </div>
 
-          <div className="w-52 sm:w-72 h-8 mt-2">
+          <div className="w-48 sm:w-72 h-8 mt-2">
             <Waveform state={state} audioLevel={audioLevel} />
           </div>
 
-          <div className="text-center mt-2">
-            <h3 className="text-lg sm:text-xl font-black tracking-tight text-[var(--text-primary)]">
-              {getStateTitle()}
-            </h3>
-            <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)] max-w-md mt-0.5 line-clamp-1">
-              {statusSubtitle}
-            </p>
-          </div>
+          {state !== 'idle' && (
+            <div className="text-center mt-2 animate-in fade-in">
+              <h3 className="text-base sm:text-xl font-black tracking-tight text-[var(--text-primary)]">
+                {getStateTitle()}
+              </h3>
+              {statusSubtitle && (
+                <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)] max-w-md mt-0.5 line-clamp-1">
+                  {statusSubtitle}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* 3. YOUTUBE-STYLE LIVE FLOATING TRANSCRIPT & CAPTIONS (NO BOX/CARD) */}
-        <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center min-h-[72px] px-4 my-auto shrink-0">
+        {/* 3. YOUTUBE-STYLE LIVE FLOATING TRANSCRIPT & CAPTIONS */}
+        <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center min-h-[48px] px-4 my-auto shrink-0">
           {speakingWords.length > 0 ? (
             /* AI Spoken Output (Karaoke Highlight like YouTube CC) */
             <div className="flex flex-wrap gap-2 items-center justify-center text-center px-5 py-2.5 rounded-2xl bg-black/80 dark:bg-black/90 backdrop-blur-md border border-white/10 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
@@ -674,40 +676,40 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
               <span>"{transcript}"</span>
             </div>
           ) : (
-            <div className="text-[11px] font-medium text-[var(--text-muted)] italic text-center">
-              "Shubham ka ₹2000 udhaar likho" ya "Ramesh ka udhaar clear ho gaya"
+            <div className="text-[11px] sm:text-xs font-medium text-[var(--text-muted)] italic text-center px-4 py-1.5 rounded-full bg-black/5 dark:bg-white/5 border border-[var(--border-color)]">
+              "Shubham ka ₹2000 udhaar likho" or "Ramesh ka 500 jama karo"
             </div>
           )}
         </div>
 
         {/* 4. BOTTOM CONTROL BAR (Mic + Input) */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 px-4 pb-3 shrink-0 max-w-2xl mx-auto w-full">
-          {/* Big Mic Button */}
-          <div className="flex items-center gap-3 px-4 py-2 rounded-full glass-panel-elevated shadow-lg border border-[var(--border-color)]">
+        <div className="flex items-center justify-center gap-3 px-4 pb-4 pt-1 shrink-0 max-w-2xl mx-auto w-full">
+          {/* Big Mic Button Capsule */}
+          <div className="flex items-center gap-3 px-5 py-2 sm:py-2.5 rounded-full glass-panel-elevated shadow-xl border border-[var(--border-color)]">
             <button
               type="button"
               onClick={isRecording ? stopListeningAndProcess : startListening}
-              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
+              className={`w-14 h-14 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-md ${
                 isRecording
                   ? 'bg-rose-600 text-white animate-pulse scale-105'
-                  : 'bg-[#FFD026] text-black hover:scale-105 border border-[#E6B800] shadow-sm'
+                  : 'bg-[#FFD026] text-black hover:scale-105 active:scale-95 border border-[#E6B800] shadow-sm'
               }`}
               title={isRecording ? 'Stop Recording' : 'Start Recording'}
             >
-              {isRecording ? <Square className="w-4 h-4 fill-current" /> : <Mic className="w-5 h-5 font-black" />}
+              {isRecording ? <Square className="w-5 h-5 fill-current" /> : <Mic className="w-6 h-6 stroke-[2.5]" />}
             </button>
-            <span className="font-mono text-xs font-bold text-[var(--text-secondary)] w-11 text-center">
+            <span className="font-mono text-sm sm:text-xs font-bold text-[var(--text-secondary)] w-12 text-center">
               {formatTimer(recordDuration)}
             </span>
           </div>
 
-          {/* Manual Text Command Box */}
+          {/* Manual Text Command Box (Desktop only - hidden on mobile) */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               executeCommand(textInput);
             }}
-            className="flex-1 max-w-md w-full flex items-center gap-2 bg-white dark:bg-[#1A1B20] border border-[var(--border-color)] rounded-full px-4 py-2 shadow-sm"
+            className="hidden md:flex flex-1 max-w-md w-full items-center gap-2 bg-white dark:bg-[#1A1B20] border border-[var(--border-color)] rounded-full px-4 py-2 shadow-sm"
           >
             <input
               type="text"
