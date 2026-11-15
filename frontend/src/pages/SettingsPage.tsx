@@ -9,6 +9,8 @@ import {
   Save,
   QrCode,
   CheckCircle2,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { UserProfile } from '../types';
@@ -22,6 +24,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
   const { theme, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<'profile' | 'shop' | 'payments' | 'security' | 'appearance'>('profile');
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+
+  const tabs = [
+    { id: 'profile' as const, label: 'Personal Profile', icon: User },
+    { id: 'shop' as const, label: 'Shop Information', icon: Store },
+    { id: 'payments' as const, label: 'Payment & UPI Details', icon: CreditCard },
+    { id: 'appearance' as const, label: 'Theme & Appearance', icon: Palette },
+    { id: 'security' as const, label: 'Security & Passwords', icon: Shield },
+  ];
 
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
@@ -113,13 +124,26 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h2 className="text-2xl font-black tracking-tight text-[var(--text-primary)]">
-          Account & Store Settings
-        </h2>
-        <p className="text-xs text-[var(--text-muted)] mt-1">
-          Manage your personal profile, business identity, UPI payments, and store preferences.
-        </p>
+      <div className="flex items-center justify-between gap-3 shrink-0">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-[var(--text-primary)]">
+              Account & Store Settings
+            </h2>
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(true)}
+              className="md:hidden flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#FFD026] text-black text-xs font-black shadow-xs active:scale-95 cursor-pointer"
+              title="Change Settings Section"
+            >
+              <span>{tabs.find((t) => t.id === activeTab)?.label}</span>
+              <ChevronDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <p className="text-xs text-[var(--text-muted)] mt-1 hidden sm:block">
+            Manage your personal profile, business identity, UPI payments, and store preferences.
+          </p>
+        </div>
       </div>
 
       {savedSuccess && (
@@ -130,8 +154,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
 
       {/* Tabs Layout */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {/* Navigation Tabs */}
-        <div className="glass-card rounded-2xl p-2 space-y-1 h-fit">
+        {/* Navigation Tabs - Hidden on mobile, shown on md+ */}
+        <div className="hidden md:block md:col-span-1 glass-card rounded-2xl p-2 space-y-1 h-fit">
           <button
             onClick={() => setActiveTab('profile')}
             className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
@@ -188,8 +212,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
           </button>
         </div>
 
-        {/* Form Body */}
-        <div className="md:col-span-3 glass-card rounded-2xl p-6">
+        {/* Form Body - Takes full width on mobile, 3 cols on desktop */}
+        <div className="col-span-1 md:col-span-3 glass-card rounded-2xl p-4 sm:p-6">
           <form onSubmit={handleSave} className="space-y-4 text-xs">
             {activeTab === 'profile' && (
               <div className="space-y-4">
@@ -408,6 +432,59 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ user, onUpdateUser }
           </form>
         </div>
       </div>
+
+      {/* Mobile Settings Section Off-Canvas Drawer */}
+      {mobileDrawerOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-end bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className="flex-1"
+            onClick={() => setMobileDrawerOpen(false)}
+          />
+          <div className="w-full bg-[var(--surface-color)] border-t border-[var(--border-color)] rounded-t-3xl p-5 max-h-[80vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
+              <div className="flex items-center gap-2">
+                <Store className="w-5 h-5 text-[#FFD026]" />
+                <h3 className="font-bold text-sm text-[var(--text-primary)]">Settings Sections</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileDrawerOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center bg-black/5 dark:bg-white/5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="py-3 space-y-1.5 overflow-y-auto">
+              {tabs.map((tab) => {
+                const IconComponent = tab.icon;
+                const isSelected = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(tab.id);
+                      setMobileDrawerOpen(false);
+                    }}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold transition-all text-left cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#FFD026] text-black shadow-xs font-black'
+                        : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <IconComponent className={`w-4 h-4 ${isSelected ? 'text-black' : 'text-[var(--text-secondary)]'}`} />
+                      <span>{tab.label}</span>
+                    </div>
+                    {isSelected && <Check className="w-4 h-4 text-black" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

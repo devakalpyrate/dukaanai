@@ -865,6 +865,18 @@ async def speak_text_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Text cannot be empty.",
         )
+    if len(clean_text) > 300:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Text exceeds maximum store speech confirmation limit of 300 characters.",
+        )
+    forbidden_terms = ["mysql", "postgresql", "sqlite", "database", "schema", "table", "fastapi", "uvicorn", "gunicorn", "backend", "architecture", "endpoint"]
+    for term in forbidden_terms:
+        if term in clean_text.lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Store speech content cannot contain internal system or technical architecture terms.",
+            )
     try:
         from app.models.tts import synthesize_speech
         out_file = synthesize_speech(clean_text)
