@@ -127,11 +127,11 @@ app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
 static_dir = Path(__file__).resolve().parent / "static"
-static_dir.mkdir(parents=True, exist_ok=True)
 assets_dir = static_dir / "assets"
-assets_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+if assets_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 landing_dir = Path(__file__).resolve().parent.parent / "landing"
 if landing_dir.exists():
     app.mount("/landing", StaticFiles(directory=str(landing_dir), html=True), name="landing")
