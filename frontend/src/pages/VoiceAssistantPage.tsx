@@ -56,11 +56,6 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   const [progressLabel, setProgressLabel] = useState<string>('Ready for store instruction');
 
   const [autoSpeakEnabled, setAutoSpeakEnabled] = useState<boolean>(true);
-  const [showAudioGenModal, setShowAudioGenModal] = useState<boolean>(false);
-  const [genTextInput, setGenTextInput] = useState<string>('रमेश के खाते में ₹500 का उधार लिख दिया गया है।');
-  const [genAudioUrl, setGenAudioUrl] = useState<string | null>(null);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
-  const [genAudioError, setGenAudioError] = useState<string | null>(null);
 
   const [history, setHistory] = useState<VoiceHistoryItem[]>([]);
   const [activeSpeechText, setActiveSpeechText] = useState<string | null>(null);
@@ -154,6 +149,21 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       }
     };
   }, []);
+
+  const synthesizeSpeechAudio = async (text: string): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/api/voice/speak`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    } catch {
+      return null;
+    }
+  };
 
   const playSpeechWithWordHighlight = (audioUrl: string, speechText: string) => {
     if (currentAudioRef.current) {
@@ -280,23 +290,10 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       let currentAudioUrl: string | undefined = undefined;
 
       if (autoSpeakEnabled && speechText) {
-        try {
-          const speakRes = await fetch(`${API_BASE}/api/voice/speak`, {
-            method: 'POST',
-            headers: getAuthHeaders(),
-            body: JSON.stringify({ text: speechText }),
-          });
-          if (speakRes.ok) {
-            const audioBlob = await speakRes.blob();
-            currentAudioUrl = URL.createObjectURL(audioBlob);
-            setGenAudioUrl(currentAudioUrl);
-            playSpeechWithWordHighlight(currentAudioUrl, speechText);
-          } else {
-            setActiveSpeechText(speechText);
-            setSpeakingWords(speechText.trim().split(/\s+/).filter(Boolean));
-            setCurrentWordIndex(-1);
-          }
-        } catch {
+        currentAudioUrl = (await synthesizeSpeechAudio(speechText)) || undefined;
+        if (currentAudioUrl) {
+          playSpeechWithWordHighlight(currentAudioUrl, speechText);
+        } else {
           setActiveSpeechText(speechText);
           setSpeakingWords(speechText.trim().split(/\s+/).filter(Boolean));
           setCurrentWordIndex(-1);
@@ -342,29 +339,6 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
     }
   };
 
-  const handleGenerateCustomAudio = async (textToSpeak: string) => {
-    if (!textToSpeak.trim()) return;
-    setIsGeneratingAudio(true);
-    setGenAudioError(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/voice/speak`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({ text: textToSpeak.trim() }),
-      });
-      if (!res.ok) {
-        throw new Error('Speech synthesis failed.');
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      setGenAudioUrl(url);
-      playSpeechWithWordHighlight(url, textToSpeak.trim());
-    } catch (err: any) {
-      setGenAudioError(err.message || 'Audio generation error.');
-    } finally {
-      setIsGeneratingAudio(false);
-    }
-  };
 
   const startListening = async () => {
     try {
@@ -604,15 +578,6 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
               <span>Auto-Speech {autoSpeakEnabled ? 'ON' : 'OFF'}</span>
             </button>
 
-            {/* Audio Generator Button */}
-            <button
-              onClick={() => setShowAudioGenModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-[#FFD026] text-black border border-[#E6B800] hover:bg-[#F6B511] transition-all cursor-pointer shadow-xs"
-              title="Open AI Audio Generator"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Audio Generator</span>
-            </button>
 
             {/* Language Selector */}
             <div className="hidden sm:flex items-center gap-1 bg-black/5 dark:bg-white/5 p-1 rounded-full border border-[var(--border-color)] text-xs font-bold text-[var(--text-muted)]">
@@ -861,11 +826,12 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
                   <span className="line-clamp-1">{item.responseMessage}</span>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
                       if (item.audioUrl) {
                         playSpeechWithWordHighlight(item.audioUrl, item.responseMessage);
                       } else {
-                        handleGenerateCustomAudio(item.responseMessage);
+                        const url = await synthesizeSpeechAudio(item.responseMessage);
+                        if (url) playSpeechWithWordHighlight(url, item.responseMessage);
                       }
                     }}
                     className="p-1 rounded bg-[#FFD026] text-black hover:bg-[#F6B511] cursor-pointer shrink-0 ml-1.5 transition-transform active:scale-95 shadow-xs"
@@ -879,122 +845,6 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
           )}
         </div>
       </aside>
-
-      {/* 6. AI AUDIO GENERATOR MODAL */}
-      {showAudioGenModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-3xl glass-panel-elevated p-6 space-y-4 border border-[var(--border-color)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#FFD026] text-black flex items-center justify-center font-black text-base border border-[#E6B800] shadow-xs">
-                  द
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-[var(--text-primary)]">AI Audio Generator</h3>
-                  <p className="text-[11px] font-medium text-[var(--text-muted)]">Audio matches whichever language you input</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowAudioGenModal(false)}
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Quick Language Presets */}
-            <div>
-              <span className="text-[11px] font-bold text-[var(--text-muted)] block mb-1.5 uppercase tracking-wider">
-                Quick Language Presets (Click to test):
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: '🇮🇳 Hindi', text: 'रमेश के खाते में ₹500 का उधार दर्ज कर दिया गया है।' },
-                  { label: '🇮🇳 Odia', text: 'ରମେଶଙ୍କ ଖାତାରେ ₹୫୦୦ ଉଧାର ଯୋଡ଼ାଗଲା।' },
-                  { label: '🇮🇳 Hinglish', text: 'Ramesh ke khate mein ₹500 ka udhaar likh diya gaya hai.' },
-                  { label: '🇬🇧 English', text: 'Credit of Rs 500 recorded for Ramesh.' },
-                  { label: '🇮🇳 Punjabi', text: 'ਰਮੇਸ਼ ਦੇ ਖਾਤੇ ਵਿੱਚ ₹500 ਦਾ ਉਧਾਰ ਦਰਜ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ।' },
-                  { label: '🇮🇳 Bengali', text: 'রমেশের খাতায় ₹৫০০ বাকি জমা করা হয়েছে।' },
-                  { label: '🇮🇳 Gujarati', text: 'રમેશના ખાતામાં ₹500 નું ઉધાર લખાઈ ગયું છે.' },
-                ].map((preset, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => {
-                      setGenTextInput(preset.text);
-                      handleGenerateCustomAudio(preset.text);
-                    }}
-                    className="px-2.5 py-1 rounded-full text-xs bg-black/5 dark:bg-white/5 hover:bg-[#FFD026] hover:text-black border border-[var(--border-color)] text-[var(--text-primary)] font-semibold transition-all cursor-pointer shadow-xs"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Text Input Area */}
-            <div>
-              <label className="block text-xs font-bold text-[var(--text-primary)] mb-1">
-                Enter Text to Generate Speech:
-              </label>
-              <textarea
-                rows={3}
-                value={genTextInput}
-                onChange={(e) => setGenTextInput(e.target.value)}
-                placeholder="Type in Hindi, Odia, English, Hinglish, Bengali, Punjabi..."
-                className="w-full p-3 rounded-2xl bg-white dark:bg-white/5 border border-[var(--border-color)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-black dark:focus:border-[#FFD026] font-medium resize-none"
-              />
-            </div>
-
-            {genAudioError && (
-              <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-400 font-semibold">
-                {genAudioError}
-              </div>
-            )}
-
-            {/* Actions & Player */}
-            <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-[var(--border-color)]">
-              {genAudioUrl ? (
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <audio controls src={genAudioUrl} className="h-8 max-w-[260px]" autoPlay />
-                </div>
-              ) : (
-                <span className="text-[11px] text-[var(--text-muted)] italic">
-                  Press Generate to synthesize speech
-                </span>
-              )}
-
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowAudioGenModal(false)}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-[var(--text-muted)] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  disabled={isGeneratingAudio || !genTextInput.trim()}
-                  onClick={() => handleGenerateCustomAudio(genTextInput)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#18181B] hover:bg-black dark:bg-[#FFD026] text-white dark:text-black font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50 transition-all"
-                >
-                  {isGeneratingAudio ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Synthesizing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 className="w-3.5 h-3.5 text-[#FFD026] dark:text-black" />
-                      <span>Generate Audio</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
