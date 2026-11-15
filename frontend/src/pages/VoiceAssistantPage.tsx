@@ -80,6 +80,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const speechRecRef = useRef<any>(null);
+  const liveSpeechTextRef = useRef<string>('');
 
   const getShopId = (): number => {
     const userStr = localStorage.getItem('dukaanai_user');
@@ -89,7 +90,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
         if (u.shop_id) return u.shop_id;
       } catch {}
     }
-    return 1;
+    return 131;
   };
 
   // Load persistent history on mount
@@ -430,7 +431,8 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
               interim += ev.results[i][0].transcript;
             }
             if (interim.trim()) {
-              setTranscript(interim);
+              liveSpeechTextRef.current = interim.trim();
+              setTranscript(interim.trim());
             }
           };
           rec.start();
@@ -441,6 +443,7 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       setIsRecording(true);
       setState('listening');
       setTranscript('');
+      liveSpeechTextRef.current = '';
       setStatusSubtitle('Listening...');
       setProgressPercent(20);
       setProgressLabel('20%');
@@ -501,10 +504,13 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
       }
 
       const data = await res.json();
-      const recognized = data.transcribed_text || '';
-      if (!recognized.trim()) {
-        setState('clarification');
-        setStatusSubtitle('No speech detected.');
+      let recognized = (data.transcribed_text || '').trim();
+      if (!recognized && liveSpeechTextRef.current.trim()) {
+        recognized = liveSpeechTextRef.current.trim();
+      }
+      if (!recognized) {
+        setState('idle');
+        setStatusSubtitle('Awaz sunayi nahi di. Kripya mic ke paas bolein ya neeche command type karein.');
         setProgressPercent(0);
         setProgressLabel('');
         return;
@@ -687,11 +693,11 @@ export const VoiceAssistantPage: React.FC<VoiceAssistantPageProps> = () => {
               <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping shrink-0" />
               <span>{transcript ? `"${transcript}"` : 'Listening...'}</span>
             </div>
-          ) : transcript ? (
+          ) : transcript && transcript.trim() ? (
             /* Last Recognized Command Caption */
             <div className="flex items-center justify-center gap-2 px-5 py-2 rounded-2xl bg-black/60 dark:bg-black/80 backdrop-blur-md border border-white/10 text-white/90 font-medium text-xs sm:text-sm shadow-md">
               <Mic className="w-3.5 h-3.5 text-[#FFD026] shrink-0" />
-              <span>"{transcript}"</span>
+              <span>"{transcript.trim()}"</span>
             </div>
           ) : (
             <div className="text-[11px] sm:text-xs font-medium text-[var(--text-muted)] italic text-center px-4 py-1.5 rounded-full bg-black/5 dark:bg-white/5 border border-[var(--border-color)]">

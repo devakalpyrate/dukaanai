@@ -1030,6 +1030,8 @@ def execute_action_endpoint(
         req_id = payload.request_id or str(uuid.uuid4())
         intent_copy = dict(payload.intent_data)
         intent_copy["shop_id"] = current_shop["shop_id"]
+        if "parameters" in intent_copy and isinstance(intent_copy["parameters"], dict):
+            intent_copy["parameters"]["shop_id"] = current_shop["shop_id"]
         
         res = IntentExecutor.execute(
             intent_copy,

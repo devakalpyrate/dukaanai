@@ -69,6 +69,37 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
 
     audio_duration = get_audio_duration(path)
 
+    groq_api_key = os.getenv("GROQ_API_KEY")
+    if groq_api_key:
+        try:
+            from groq import Groq
+            groq_client = Groq(api_key=groq_api_key)
+            start_time = time.perf_counter()
+            with open(path, "rb") as f:
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(path.name, f.read()),
+                    model="whisper-large-v3-turbo",
+                    language=language or "hi",
+                    response_format="json",
+                )
+            raw_text = (getattr(transcription, "text", "") or "").strip()
+            if raw_text:
+                inf_time = round(time.perf_counter() - start_time, 3)
+                rtf = (
+                    round(inf_time / audio_duration, 3)
+                    if audio_duration and audio_duration > 0
+                    else None
+                )
+                return TranscriptionResult(
+                    text=raw_text,
+                    inference_time_sec=inf_time,
+                    audio_duration_sec=round(audio_duration, 2) if audio_duration else None,
+                    real_time_factor=rtf,
+                    device="cloud-groq-whisper",
+                )
+        except Exception as groq_err:
+            logger.warning("Groq Whisper transcription fallback: %s", groq_err)
+
     api_key = (
         os.getenv("BANDHON_AI_STT_API_KEY")
         or os.getenv("BANDHON_AI_STT_KEY")
@@ -83,7 +114,7 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
     if not api_key:
         error_msg = (
             "Speech-to-Text API key is missing. "
-            "Please set BANDHON_AI_STT_API_KEY in your .env file."
+            "Please set BANDHON_AI_STT_API_KEY or GROQ_API_KEY in your .env file."
         )
         logger.error(error_msg)
         raise RuntimeError(error_msg)
