@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -171,8 +171,9 @@ def favicon_png():
 def serve_ui(subpath: Optional[str] = None):
     ui_file = static_dir / "index.html"
     if ui_file.exists():
-        return FileResponse(ui_file)
-    return {"message": "DukaanAI Voice Assistant UI"}
+        content = ui_file.read_text(encoding="utf-8")
+        return HTMLResponse(content=content, status_code=200)
+    return HTMLResponse("<h1>DukaanAI Unified Server</h1><p>UI loading...</p>", status_code=200)
 
 class TranscriptionResponse(BaseModel):
     success: bool

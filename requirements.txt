@@ -12,3 +12,5 @@ qrcode>=7.4.2
 pillow>=10.4.0
 grpcio>=1.60.0
 protobuf>=5.26.0
+python-multipart>=0.0.18
+aiofiles>=24.1.0
