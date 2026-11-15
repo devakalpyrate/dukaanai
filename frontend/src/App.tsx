@@ -26,6 +26,17 @@ const pagePathMap: Record<PageId, string> = {
   docs: '/docs',
 };
 
+const pageTitleMap: Record<PageId, string> = {
+  overview: 'Home | DukaanAI',
+  'voice-assistant': 'Voice Assistant | DukaanAI',
+  customers: 'Customers & Khata | DukaanAI',
+  products: 'Products & Inventory | DukaanAI',
+  sales: 'Sales & Transactions | DukaanAI',
+  reports: 'Reports & Analytics | DukaanAI',
+  settings: 'Setting | DukaanAI',
+  docs: 'Documentation | DukaanAI',
+};
+
 const pathToPageMap: Record<string, PageId> = {
   '/home': 'overview',
   '/': 'overview',
@@ -82,6 +93,12 @@ export const App: React.FC = () => {
   const [docSubSection, setDocSubSection] = useState<string>(getInitialDocSection);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (currentPage !== 'docs') {
+      document.title = pageTitleMap[currentPage] || 'DukaanAI';
+    }
+  }, [currentPage]);
 
   const handleNavigate = (page: PageId) => {
     if (currentPage !== 'docs' && page === 'docs') {

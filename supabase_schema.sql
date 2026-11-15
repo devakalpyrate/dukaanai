@@ -4,8 +4,53 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(150) UNIQUE NOT NULL,
     phone VARCHAR(20),
     password VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    joining_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE
 );
+
+CREATE TABLE IF NOT EXISTS deleted_users_audit (
+    audit_id SERIAL PRIMARY KEY,
+    user_id INT,
+    name VARCHAR(100),
+    email VARCHAR(150),
+    phone VARCHAR(20),
+    joining_date TIMESTAMP WITH TIME ZONE,
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    deleted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    deleted_by VARCHAR(50) DEFAULT 'user_action'
+);
+
+CREATE OR REPLACE FUNCTION log_user_deletion()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO deleted_users_audit (
+        user_id,
+        name,
+        email,
+        phone,
+        joining_date,
+        last_login_at,
+        deleted_at
+    ) VALUES (
+        OLD.id,
+        OLD.name,
+        OLD.email,
+        OLD.phone,
+        COALESCE(OLD.joining_date, OLD.created_at),
+        OLD.last_login_at,
+        CURRENT_TIMESTAMP
+    );
+    RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_user_deletion_audit ON users;
+CREATE TRIGGER trg_user_deletion_audit
+BEFORE DELETE ON users
+FOR EACH ROW
+EXECUTE FUNCTION log_user_deletion();
 
 CREATE TABLE IF NOT EXISTS shops (
     id SERIAL PRIMARY KEY,

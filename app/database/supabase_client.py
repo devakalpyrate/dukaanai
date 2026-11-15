@@ -6,15 +6,17 @@ from supabase import create_client, Client
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://tsymnjjhuedkpzsnsouo.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "sb_secret_eh1tOSlzQ5nQ-5qrS6lrXA_sQugZUQ9")
-
 _client: Client | None = None
+_cached_key: str | None = None
 
 def get_supabase() -> Client:
-    global _client
-    if _client is None:
-        _client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    global _client, _cached_key
+    load_dotenv(dotenv_path=env_path, override=True)
+    current_url = os.getenv("SUPABASE_URL", "")
+    current_key = os.getenv("SUPABASE_KEY", "")
+    if _client is None or _cached_key != current_key:
+        _client = create_client(current_url, current_key)
+        _cached_key = current_key
     return _client
 
 def get_next_id(table_name: str, min_start: int = 1000) -> int:

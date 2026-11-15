@@ -89,3 +89,22 @@ def delete_user(user_id: int) -> bool:
     client = get_supabase()
     res = client.table("users").delete().eq("id", user_id).execute()
     return bool(res.data)
+
+def record_user_login(user_id: int) -> None:
+    client = get_supabase()
+    try:
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        client.table("users").update({"last_login_at": now_iso}).eq("id", user_id).execute()
+    except Exception:
+        pass
+
+def soft_delete_user(user_id: int) -> bool:
+    client = get_supabase()
+    try:
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        res = client.table("users").update({"deleted_at": now_iso}).eq("id", user_id).execute()
+        return bool(res.data)
+    except Exception:
+        return False

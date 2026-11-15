@@ -482,6 +482,7 @@ def login_endpoint(request: Request, payload: LoginPayload):
             )
     
     user_id = user["id"]
+    user_queries.record_user_login(user_id)
     shops = shop_queries.get_shops_by_owner(user_id)
     if not shops:
         raise HTTPException(

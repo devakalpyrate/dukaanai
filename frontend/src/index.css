@@ -30,12 +30,10 @@
   }
 
   html, body {
-    height: 100%;
-    width: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden;
-    overscroll-behavior: none;
+    min-height: 100%;
+    width: 100%;
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -70,65 +68,26 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.05);
 }
 
-/* Custom DukaanAI Sleek Auto-Hiding Scrollbar */
+/* Standard Visible Inbuilt Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #090B0E;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 9999px;
-  transition: background-color 0.3s ease;
+  background: #30363D;
+  border-radius: 4px;
 }
 
-/* Auto-hiding scrollbar: Hidden when idle, visible only while scrolling */
-.auto-hide-scrollbar,
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-}
-
-.auto-hide-scrollbar::-webkit-scrollbar,
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-.auto-hide-scrollbar::-webkit-scrollbar-track,
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.auto-hide-scrollbar::-webkit-scrollbar-thumb,
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: transparent;
-  border-radius: 9999px;
-  transition: background-color 0.3s ease;
-}
-
-.auto-hide-scrollbar.is-scrolling::-webkit-scrollbar-thumb,
-.custom-scrollbar.is-scrolling::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 208, 38, 0.85);
-}
-
-.auto-hide-scrollbar.is-scrolling,
-.custom-scrollbar.is-scrolling {
-  scrollbar-color: rgba(255, 208, 38, 0.85) transparent;
-}
-
-.auto-hide-scrollbar:hover::-webkit-scrollbar-thumb,
-.custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background-color: rgba(161, 161, 170, 0.35);
+::-webkit-scrollbar-thumb:hover {
+  background: #FFD026;
 }
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(161, 161, 170, 0.35) transparent;
+  scrollbar-color: #30363D #090B0E;
 }

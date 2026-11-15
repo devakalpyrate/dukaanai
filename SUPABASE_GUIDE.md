@@ -21,8 +21,8 @@ Below is the complete entity-relationship and relational table architecture expo
 The application connects to Supabase using the official Python client. Configuration is managed via `.env`:
 
 ```env
-SUPABASE_URL=https://tsymnjjhuedkpzsnsouo.supabase.co
-SUPABASE_KEY=sb_secret_eh1tOSlzQ5nQ-5qrS6lrXA_sQugZUQ9
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your_supabase_service_role_secret_key
 ```
 
 ### Key Components:
@@ -87,8 +87,8 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO postgres, ano
 When deploying DukaanAI to Vercel:
 
 1. **Environment Variables**: Add these in the Vercel Project Dashboard:
-   - `SUPABASE_URL` = `https://tsymnjjhuedkpzsnsouo.supabase.co`
-   - `SUPABASE_KEY` = `sb_secret_eh1tOSlzQ5nQ-5qrS6lrXA_sQugZUQ9`
+   - `SUPABASE_URL` = `https://your-project-id.supabase.co`
+   - `SUPABASE_KEY` = `your_supabase_service_role_secret_key`
    - `GROQ_API_KEY` = `gsk_...`
    - `HF_TOKEN` = `hf_...`
    - `SERPAPI_API_KEY` = `9fd8a6af...`

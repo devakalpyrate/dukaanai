@@ -138,8 +138,8 @@ npm --prefix frontend run build
 Create a `.env` file in the project root:
 ```env
 # Supabase Cloud Database Credentials
-SUPABASE_URL=https://tsymnjjhuedkpzsnsouo.supabase.co
-SUPABASE_KEY=sb_secret_eh1tOSlzQ5nQ-5qrS6lrXA_sQugZUQ9
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_KEY=your_supabase_service_role_secret_key
 
 # Security & Tokens
 SECRET_KEY=your_jwt_signing_secret_here
