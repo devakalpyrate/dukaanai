@@ -40,6 +40,7 @@ const pageTitleMap: Record<PageId, string> = {
 const pathToPageMap: Record<string, PageId> = {
   '/home': 'overview',
   '/': 'overview',
+  '/login': 'overview',
   '/assistant': 'voice-assistant',
   '/customers': 'customers',
   '/products': 'products',
