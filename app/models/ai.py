@@ -189,6 +189,7 @@ class GroqLLMClient:
                     messages=messages,
                     response_format={"type": "json_object"},
                     temperature=0.1,
+                    max_tokens=350,
                 )
                 raw_content = response.choices[0].message.content or "{}"
                 parsed_json = json.loads(raw_content)
