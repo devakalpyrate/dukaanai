@@ -23,7 +23,12 @@ from app.authentication.auth import (
     hash_password,
     verify_password,
 )
-from app.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
+try:
+    from app.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
+except Exception:
+    close_grpc_resources = lambda: None
+    get_grpc_client = lambda: None
+    get_grpc_server_manager = lambda: None
 from app.models.ai import get_llm_client
 from app.models.voice import get_audio_duration, get_model_info, load_model, transcribe_audio
 from app.queries import customer as customer_queries
