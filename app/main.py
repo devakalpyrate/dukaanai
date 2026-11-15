@@ -128,6 +128,17 @@ def favicon_svg():
         return FileResponse(fav)
     return FileResponse(static_dir / "index.html")
 
+@app.get("/favicon.png")
+@app.get("/favicon.ico")
+def favicon_png():
+    fav_png = static_dir / "favicon.png"
+    if fav_png.exists():
+        return FileResponse(fav_png)
+    fav_svg = static_dir / "favicon.svg"
+    if fav_svg.exists():
+        return FileResponse(fav_svg)
+    return FileResponse(static_dir / "index.html")
+
 @app.get("/")
 @app.get("/login")
 @app.get("/home")
