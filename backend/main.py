@@ -126,9 +126,7 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-backend_static = Path(__file__).resolve().parent / "static"
-static_dir = frontend_dist if (frontend_dist / "index.html").exists() else backend_static
+static_dir = Path(__file__).resolve().parent / "static"
 assets_dir = static_dir / "assets"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
