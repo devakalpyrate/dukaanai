@@ -95,3 +95,6 @@ temp/
 *.pptx
 *.ppt
 generate_presentation.py
+
+# Local landing page showcase
+landing/
