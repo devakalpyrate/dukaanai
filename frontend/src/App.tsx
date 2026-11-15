@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Mic, Package, ArrowLeftRight } from 'lucide-react';
+import { LayoutDashboard, Users, Mic, Package, ArrowLeftRight, BarChart3, Settings } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { AuthModal } from './components/AuthModal';
@@ -271,52 +271,88 @@ export const App: React.FC = () => {
               </div>
             </main>
 
-            {/* Mobile Bottom Navigation Bar */}
-            <nav className="md:hidden h-16 border-t border-[var(--border-color)] bg-[#0E1217]/95 backdrop-blur-md px-2 flex items-center justify-around shrink-0 z-30">
+            {/* Mobile Bottom Navigation Bar (7 options: 3 left + Center Goal Mic + 3 right) */}
+            <nav className="md:hidden h-16 border-t border-[var(--border-color)] bg-[#0E1217]/95 backdrop-blur-md px-1 flex items-center justify-between shrink-0 z-30 select-none">
+              {/* 1. Home */}
               <button
                 onClick={() => handleNavigate('overview')}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
                   currentPage === 'overview' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
                 }`}
               >
-                <LayoutDashboard className="w-5 h-5 mb-0.5" />
-                <span>Home</span>
+                <LayoutDashboard className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Home</span>
               </button>
+
+              {/* 2. Khata */}
               <button
                 onClick={() => handleNavigate('customers')}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
                   currentPage === 'customers' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
                 }`}
               >
-                <Users className="w-5 h-5 mb-0.5" />
-                <span>Khata</span>
+                <Users className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Khata</span>
               </button>
-              {/* Central Glowing Voice AI Mic FAB */}
-              <button
-                onClick={() => handleNavigate('voice-assistant')}
-                className="-mt-5 w-12 h-12 rounded-full bg-[#FFD026] text-black shadow-lg shadow-amber-500/30 border-2 border-[#1E232B] flex items-center justify-center cursor-pointer transition-transform active:scale-95"
-                title="Voice Assistant"
-                aria-label="Voice Assistant"
-              >
-                <Mic className="w-6 h-6 stroke-[2.4]" />
-              </button>
+
+              {/* 3. Products */}
               <button
                 onClick={() => handleNavigate('products')}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
                   currentPage === 'products' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
                 }`}
               >
-                <Package className="w-5 h-5 mb-0.5" />
-                <span>Products</span>
+                <Package className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Products</span>
               </button>
+
+              {/* 4. Central Elevated Goal Mic Button */}
+              <div className="shrink-0 px-1 -mt-5">
+                <button
+                  onClick={() => handleNavigate('voice-assistant')}
+                  className={`w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition-transform active:scale-95 border-2 border-[#1E232B] shadow-lg ${
+                    currentPage === 'voice-assistant'
+                      ? 'bg-[#FFD026] text-black shadow-amber-500/40 ring-2 ring-[#FFD026]/50'
+                      : 'bg-[#FFD026] text-black shadow-amber-500/25 hover:scale-105'
+                  }`}
+                  title="Voice Assistant"
+                  aria-label="Voice Assistant"
+                >
+                  <Mic className="w-6 h-6 stroke-[2.4]" />
+                </button>
+              </div>
+
+              {/* 5. Sales */}
               <button
                 onClick={() => handleNavigate('sales')}
-                className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl text-[10px] font-bold cursor-pointer transition-colors ${
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
                   currentPage === 'sales' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
                 }`}
               >
-                <ArrowLeftRight className="w-5 h-5 mb-0.5" />
-                <span>Sales</span>
+                <ArrowLeftRight className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Sales</span>
+              </button>
+
+              {/* 6. Reports */}
+              <button
+                onClick={() => handleNavigate('reports')}
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'reports' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Reports</span>
+              </button>
+
+              {/* 7. Settings */}
+              <button
+                onClick={() => handleNavigate('settings')}
+                className={`flex-1 flex flex-col items-center justify-center py-1 px-0.5 rounded-xl text-[9px] font-bold cursor-pointer transition-colors ${
+                  currentPage === 'settings' ? 'text-[#FFD026]' : 'text-[#8B949E] hover:text-white'
+                }`}
+              >
+                <Settings className="w-4 h-4 mb-0.5" />
+                <span className="truncate max-w-[46px] leading-tight">Settings</span>
               </button>
             </nav>
           </div>

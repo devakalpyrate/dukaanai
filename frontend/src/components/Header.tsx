@@ -14,7 +14,6 @@ import {
   ArrowUpRight,
   X,
   Trash2,
-  Menu,
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { UserProfile, PageId, AppNotification } from '../types';
@@ -294,18 +293,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="glass-panel h-16 px-3 sm:px-6 flex items-center justify-between border-b border-[var(--border-color)] z-20 shrink-0 select-none">
-      {/* Header Left: Current Store Badge & Mobile Menu Toggle */}
+      {/* Header Left: Current Store Badge */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        {onToggleMobileMenu && (
-          <button
-            onClick={onToggleMobileMenu}
-            className="md:hidden p-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 border border-[var(--border-color)] cursor-pointer transition-all active:scale-95 shrink-0"
-            title="Open Navigation Menu"
-            aria-label="Open Navigation Menu"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        )}
         <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-full bg-black/5 dark:bg-white/5 border border-[var(--border-color)] text-xs font-bold text-[var(--text-primary)] min-w-0">
           <Store className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-400 shrink-0" />
           <span className="truncate max-w-[95px] xs:max-w-[130px] sm:max-w-none">{user.shop_name}</span>
