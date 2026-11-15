@@ -248,13 +248,16 @@ class NotificationBatchPayload(BaseModel):
 
 class AuthResponse(BaseModel):
     success: bool
-    access_token: str
-    user_id: int
-    name: str
-    email: str
+    requires_otp: Optional[bool] = False
+    message: Optional[str] = ""
+    masked_email: Optional[str] = ""
+    access_token: Optional[str] = ""
+    user_id: Optional[int] = 0
+    name: Optional[str] = ""
+    email: Optional[str] = ""
     phone: Optional[str] = ""
-    shop_id: int
-    shop_name: str
+    shop_id: Optional[int] = 0
+    shop_name: Optional[str] = ""
     shop_address: Optional[str] = ""
 
 ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
@@ -484,32 +487,68 @@ def login_endpoint(request: Request, payload: LoginPayload):
             detail="Unable to log in. Check your credentials and try again.",
         )
     
-    if payload.otp:
-        submitted_otp = payload.otp.strip()
-        matched = False
-        user_phone = user.get("phone") or ""
-        user_email = (user.get("email") or "").lower()
-        digits = "".join(c for c in user_phone if c.isdigit())
-        last10 = digits[-10:] if len(digits) >= 10 else digits
-        if user_phone and ACTIVE_OTPS.get(user_phone) and ACTIVE_OTPS[user_phone]["code"] == submitted_otp:
-            matched = True
-        elif last10 and ACTIVE_OTPS.get(last10) and ACTIVE_OTPS[last10]["code"] == submitted_otp:
-            matched = True
-        elif user_email and ACTIVE_OTPS.get(user_email) and ACTIVE_OTPS[user_email]["code"] == submitted_otp:
-            matched = True
-        elif ACTIVE_OTPS.get(raw_identifier) and ACTIVE_OTPS[raw_identifier]["code"] == submitted_otp:
-            matched = True
-        if not matched:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired verification code.",
-            )
-    else:
-        if not payload.password or not verify_password(payload.password, user["password"]):
+    if payload.password:
+        if not verify_password(payload.password, user["password"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to log in. Check your credentials and try again.",
             )
+
+    if not payload.otp:
+        if not payload.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password or OTP is required to log in.",
+            )
+        import random
+        code = f"{random.randint(100000, 999999)}"
+        now = time.time()
+        user_email = (user.get("email") or "").lower()
+        user_phone = user.get("phone") or ""
+        if user_email:
+            ACTIVE_OTPS[user_email] = {"code": code, "phone": user_phone, "created_at": now}
+        if user_phone:
+            ACTIVE_OTPS[user_phone] = {"code": code, "email": user_email, "created_at": now}
+        digits = "".join(c for c in user_phone if c.isdigit())
+        if len(digits) >= 10:
+            ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": user_email, "created_at": now}
+        ACTIVE_OTPS[clean_identifier] = {"code": code, "email": user_email, "created_at": now}
+        send_otp_email(user_email, code, user.get("name") or "Shop Owner")
+        masked = mask_email(user_email)
+        return AuthResponse(
+            success=True,
+            requires_otp=True,
+            masked_email=masked,
+            message=f"Password verified. A 6-digit confirmation code has been sent to your registered email ({masked}).",
+            access_token="",
+            user_id=0,
+            name=user.get("name") or "",
+            email=user_email,
+            phone=user_phone,
+            shop_id=0,
+            shop_name="",
+            shop_address="",
+        )
+
+    submitted_otp = payload.otp.strip()
+    matched = False
+    user_phone = user.get("phone") or ""
+    user_email = (user.get("email") or "").lower()
+    digits = "".join(c for c in user_phone if c.isdigit())
+    last10 = digits[-10:] if len(digits) >= 10 else digits
+    if user_phone and ACTIVE_OTPS.get(user_phone) and ACTIVE_OTPS[user_phone]["code"] == submitted_otp:
+        matched = True
+    elif last10 and ACTIVE_OTPS.get(last10) and ACTIVE_OTPS[last10]["code"] == submitted_otp:
+        matched = True
+    elif user_email and ACTIVE_OTPS.get(user_email) and ACTIVE_OTPS[user_email]["code"] == submitted_otp:
+        matched = True
+    elif ACTIVE_OTPS.get(raw_identifier) and ACTIVE_OTPS[raw_identifier]["code"] == submitted_otp:
+        matched = True
+    if not matched:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
     
     user_id = user["id"]
     user_queries.record_user_login(user_id)

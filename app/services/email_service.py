@@ -21,8 +21,18 @@ def send_otp_email(to_email: str, otp_code: str, recipient_name: str = "Shop Own
     smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com").strip()
     smtp_port_raw = os.getenv("SMTP_PORT", "587").strip()
     smtp_port = int(smtp_port_raw) if smtp_port_raw.isdigit() else 587
-    smtp_user = os.getenv("SMTP_USER", os.getenv("GMAIL_USER", "")).strip()
-    smtp_password = os.getenv("SMTP_PASSWORD", os.getenv("GMAIL_APP_PASSWORD", "")).strip()
+    smtp_user = (
+        os.getenv("EMAIL_ID")
+        or os.getenv("SMTP_USER")
+        or os.getenv("GMAIL_USER")
+        or ""
+    ).strip()
+    smtp_password = (
+        os.getenv("EMAIL_APP_PASSWORD")
+        or os.getenv("SMTP_PASSWORD")
+        or os.getenv("GMAIL_APP_PASSWORD")
+        or ""
+    ).strip()
     from_name = os.getenv("SMTP_FROM_NAME", "DukaanAI Support").strip()
     from_email = os.getenv("SMTP_FROM_EMAIL", smtp_user).strip() or smtp_user
 

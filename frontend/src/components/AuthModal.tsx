@@ -41,6 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
   const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
   const [loginOtp, setLoginOtp] = useState('');
   const [loginOtpSent, setLoginOtpSent] = useState(false);
+  const [login2faRequired, setLogin2faRequired] = useState(false);
   const [loginMaskedEmail, setLoginMaskedEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
@@ -155,14 +156,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
           identifier,
           phone: loginMode === 'mobile' ? identifier : '',
           email: identifier,
-          password: loginMethod === 'password' ? loginPassword : '',
-          otp: loginMode === 'mobile' && loginMethod === 'otp' ? loginOtp.trim() : null,
+          password: loginPassword,
+          otp: loginOtp.trim() || null,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error?.message || data.detail || 'Login failed. Invalid mobile/email or password.');
+      }
+
+      if (data.requires_otp) {
+        setLogin2faRequired(true);
+        setLoginMaskedEmail(data.masked_email || '');
+        setLoginOtp('');
+        showOtpNotice(
+          `📧 Code sent to ${data.masked_email || 'your registered email'}`,
+          'Password confirmed! Enter the 6-digit confirmation code sent to your email.'
+        );
+        return;
       }
 
       localStorage.setItem('dukaanai_token', data.access_token);
@@ -492,6 +504,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                 type="button"
                 onClick={() => {
                   setTab('login');
+                  setLogin2faRequired(false);
                   setErrorMsg('');
                 }}
                 className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
@@ -552,208 +565,277 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
             {tab === 'login' && (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div>
-                  <h2 className="text-xl font-black text-white tracking-tight">Welcome Back</h2>
+                  <h2 className="text-xl font-black text-white tracking-tight">
+                    {login2faRequired ? 'Security Verification' : 'Welcome Back'}
+                  </h2>
                   <p className="text-xs text-[#A1A1AA] mt-0.5">
-                    Sign in to your DukaanAI store with your Mobile Number or Email.
+                    {login2faRequired
+                      ? 'Please enter the 6-digit confirmation code sent to your email.'
+                      : 'Sign in to your DukaanAI store with your Mobile Number or Email.'}
                   </p>
                 </div>
 
-                {/* Sub-tabs: Mobile Number vs Email */}
-                <div className="flex bg-[#121316] p-1 rounded-xl border border-[#2E3038] gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginMode('mobile');
-                      setErrorMsg('');
-                    }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                      loginMode === 'mobile'
-                        ? 'bg-[#FFD026] text-black shadow-xs'
-                        : 'text-[#A1A1AA] hover:text-white'
-                    }`}
-                  >
-                    <Phone className="w-3.5 h-3.5" /> Mobile Number
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginMode('email');
-                      setErrorMsg('');
-                    }}
-                    className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                      loginMode === 'email'
-                        ? 'bg-[#FFD026] text-black shadow-xs'
-                        : 'text-[#A1A1AA] hover:text-white'
-                    }`}
-                  >
-                    <Mail className="w-3.5 h-3.5" /> Email Address
-                  </button>
-                </div>
+                {login2faRequired ? (
+                  <div className="space-y-4 pt-1">
+                    <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5 text-[#FFD026]">
+                          <ShieldCheck className="w-4 h-4 text-[#FFD026]" /> 2-Step Verification Active
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-[#FFD026]/20 text-[#FFD026] text-[10px] font-mono">Secure Email</span>
+                      </div>
+                      <p className="text-xs text-[#CBD5E1] leading-relaxed">
+                        Credentials verified! We sent a 6-digit confirmation code to your registered email: <strong className="text-white font-mono">{loginMaskedEmail || 'your email'}</strong>.
+                      </p>
+                      <p className="text-[10px] text-amber-400/80">
+                        Valid for 5 minutes. Never share this code with anyone.
+                      </p>
+                    </div>
 
-                {/* Field: Mobile Input or Email Input */}
-                {loginMode === 'mobile' ? (
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
-                      Mobile Number (मोबाइल नंबर)
-                    </label>
-                    <div className="relative flex items-center">
-                      <span className="absolute left-3 font-semibold text-xs text-[#FFD026] bg-[#2E3038]/70 px-1.5 py-0.5 rounded border border-[#3E404D]">
-                        🇮🇳 +91
-                      </span>
+                    <div className="space-y-1">
+                      <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                        Enter 6-Digit Email Code
+                      </label>
                       <input
-                        type="tel"
+                        type="text"
                         required
-                        maxLength={10}
-                        value={loginMobile}
-                        onChange={(e) => setLoginMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        placeholder="98765 43210"
-                        className="w-full pl-20 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026] font-mono tracking-wider"
+                        maxLength={6}
+                        value={loginOtp}
+                        onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="Enter 6-digit code"
+                        className="w-full text-center tracking-[0.3em] font-mono text-lg py-2.5 rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
                       />
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
-                      Email Address (ईमेल पता)
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
-                      <input
-                        type="email"
-                        required
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="store@dukaan.ai"
-                        className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
-                      />
-                    </div>
-                  </div>
-                )}
 
-                {/* Quick Toggle for Mobile: Password vs Instant OTP */}
-                {loginMode === 'mobile' && (
-                  <div className="flex items-center justify-between text-[11px] pt-0.5">
-                    <span className="text-[#A1A1AA]">Login verification:</span>
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLogin2faRequired(false);
+                          setLoginOtp('');
+                        }}
+                        className="text-[#A1A1AA] hover:text-white flex items-center gap-1 cursor-pointer"
+                      >
+                        <ArrowLeft className="w-3.5 h-3.5" /> Re-enter Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleLoginSubmit}
+                        disabled={loading}
+                        className="text-[#FFD026] hover:underline cursor-pointer"
+                      >
+                        Resend Code
+                      </button>
+                    </div>
+
                     <button
-                      type="button"
-                      onClick={() => {
-                        const nextMethod = loginMethod === 'password' ? 'otp' : 'password';
-                        setLoginMethod(nextMethod);
-                        setErrorMsg('');
-                        if (nextMethod === 'otp') {
-                          showOtpNotice(
-                            '🔒 Secure Email Verification',
-                            'A 6-digit confirmation code will be dispatched to your registered email.'
-                          );
-                        }
-                      }}
-                      className="text-[#FFD026] font-bold hover:underline cursor-pointer"
+                      type="submit"
+                      disabled={loading || loginOtp.length !== 6}
+                      className="w-full py-2.5 rounded-xl bg-[#FFD026] hover:bg-[#F6B511] text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50 mt-2"
                     >
-                      {loginMethod === 'password' ? 'Switch to OTP Login' : 'Switch to Password Login'}
+                      {loading ? 'Verifying...' : 'Verify Code & Enter Store'}
                     </button>
                   </div>
-                )}
-
-                {/* Password Input (shown when email mode or mobile password method) */}
-                {(loginMode === 'email' || loginMethod === 'password') && (
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="Enter your account password"
-                        className="w-full pl-3.5 pr-10 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
-                      />
+                ) : (
+                  <>
+                    {/* Sub-tabs: Mobile Number vs Email */}
+                    <div className="flex bg-[#121316] p-1 rounded-xl border border-[#2E3038] gap-1">
                       <button
                         type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white cursor-pointer"
+                        onClick={() => {
+                          setLoginMode('mobile');
+                          setErrorMsg('');
+                        }}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          loginMode === 'mobile'
+                            ? 'bg-[#FFD026] text-black shadow-xs'
+                            : 'text-[#A1A1AA] hover:text-white'
+                        }`}
                       >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        <Phone className="w-3.5 h-3.5" /> Mobile Number
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginMode('email');
+                          setErrorMsg('');
+                        }}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          loginMode === 'email'
+                            ? 'bg-[#FFD026] text-black shadow-xs'
+                            : 'text-[#A1A1AA] hover:text-white'
+                        }`}
+                      >
+                        <Mail className="w-3.5 h-3.5" /> Email Address
                       </button>
                     </div>
-                  </div>
-                )}
 
-                {/* Mobile OTP Section */}
-                {loginMode === 'mobile' && loginMethod === 'otp' && (
-                  <div className="space-y-3 pt-1">
-                    {!loginOtpSent ? (
-                      <button
-                        type="button"
-                        onClick={handleSendLoginOtp}
-                        disabled={loading || loginMobile.length < 10}
-                        className="w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[#FFD026] font-bold text-xs uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        {loading ? 'Sending Code...' : 'Get 6-Digit Login Code'}
-                      </button>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
-                          <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
-                            <span className="uppercase flex items-center gap-1.5 text-[#FFD026]">
-                              <Mail className="w-3.5 h-3.5" /> Verification Sent
-                            </span>
-                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Secure Email</span>
-                          </div>
-                          <p className="text-xs text-[#CBD5E1]">
-                            Code sent to registered email: <strong className="text-white font-mono">{loginMaskedEmail || 'your email'}</strong>
-                          </p>
-                          <p className="text-[10px] text-amber-400/80">
-                            Please check your inbox or spam folder.
-                          </p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider mb-1">
-                            Enter 6-Digit Code
-                          </label>
+                    {/* Field: Mobile Input or Email Input */}
+                    {loginMode === 'mobile' ? (
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                          Mobile Number (मोबाइल नंबर)
+                        </label>
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 font-semibold text-xs text-[#FFD026] bg-[#2E3038]/70 px-1.5 py-0.5 rounded border border-[#3E404D]">
+                            🇮🇳 +91
+                          </span>
                           <input
-                            type="text"
+                            type="tel"
                             required
-                            maxLength={6}
-                            value={loginOtp}
-                            onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
-                            placeholder="Enter 6-digit code"
-                            className="w-full text-center tracking-[0.3em] font-mono text-base py-2.5 rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                            maxLength={10}
+                            value={loginMobile}
+                            onChange={(e) => setLoginMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                            placeholder="98765 43210"
+                            className="w-full pl-20 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026] font-mono tracking-wider"
                           />
                         </div>
-                        <div className="text-right">
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                          Email Address (ईमेल पता)
+                        </label>
+                        <div className="relative">
+                          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A1A1AA]" />
+                          <input
+                            type="email"
+                            required
+                            value={loginEmail}
+                            onChange={(e) => setLoginEmail(e.target.value)}
+                            placeholder="store@dukaan.ai"
+                            className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quick Toggle for Mobile: Password vs Instant OTP */}
+                    {loginMode === 'mobile' && (
+                      <div className="flex items-center justify-between text-[11px] pt-0.5">
+                        <span className="text-[#A1A1AA]">Login verification:</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextMethod = loginMethod === 'password' ? 'otp' : 'password';
+                            setLoginMethod(nextMethod);
+                            setErrorMsg('');
+                            if (nextMethod === 'otp') {
+                              showOtpNotice(
+                                '🔒 Secure Email Verification',
+                                'A 6-digit confirmation code will be dispatched to your registered email.'
+                              );
+                            }
+                          }}
+                          className="text-[#FFD026] font-bold hover:underline cursor-pointer"
+                        >
+                          {loginMethod === 'password' ? 'Switch to OTP Login' : 'Switch to Password Login'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Password Input (shown when email mode or mobile password method) */}
+                    {(loginMode === 'email' || loginMethod === 'password') && (
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider">
+                          Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? 'text' : 'password'}
+                            required
+                            value={loginPassword}
+                            onChange={(e) => setLoginPassword(e.target.value)}
+                            placeholder="Enter your account password"
+                            className="w-full pl-3.5 pr-10 py-2.5 text-xs rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                          />
                           <button
                             type="button"
-                            onClick={handleSendLoginOtp}
-                            className="text-[11px] text-[#A1A1AA] hover:text-[#FFD026] cursor-pointer underline"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A1A1AA] hover:text-white cursor-pointer"
                           >
-                            Resend Code
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>
                     )}
-                  </div>
-                )}
 
-                <button
-                  type="submit"
-                  disabled={
-                    loading ||
-                    (loginMode === 'mobile' && loginMobile.length < 10) ||
-                    (loginMode === 'email' && !loginEmail) ||
-                    (loginMode === 'mobile' && loginMethod === 'otp' && (!loginOtpSent || loginOtp.length !== 6))
-                  }
-                  className="w-full py-2.5 rounded-xl bg-[#FFD026] hover:bg-[#F6B511] text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50 mt-2"
-                >
-                  {loading
-                    ? 'Signing in...'
-                    : loginMode === 'mobile'
-                    ? loginMethod === 'otp'
-                      ? 'Verify Code & Sign In'
-                      : 'Sign In with Mobile'
-                    : 'Sign In with Email'}
-                </button>
+                    {/* Mobile OTP Section */}
+                    {loginMode === 'mobile' && loginMethod === 'otp' && (
+                      <div className="space-y-3 pt-1">
+                        {!loginOtpSent ? (
+                          <button
+                            type="button"
+                            onClick={handleSendLoginOtp}
+                            disabled={loading || loginMobile.length < 10}
+                            className="w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[#FFD026] font-bold text-xs uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                          >
+                            {loading ? 'Sending Code...' : 'Get 6-Digit Login Code'}
+                          </button>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+                              <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
+                                <span className="uppercase flex items-center gap-1.5 text-[#FFD026]">
+                                  <Mail className="w-3.5 h-3.5" /> Verification Sent
+                                </span>
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Secure Email</span>
+                              </div>
+                              <p className="text-xs text-[#CBD5E1]">
+                                Code sent to registered email: <strong className="text-white font-mono">{loginMaskedEmail || 'your email'}</strong>
+                              </p>
+                              <p className="text-[10px] text-amber-400/80">
+                                Please check your inbox or spam folder.
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider mb-1">
+                                Enter 6-Digit Code
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                maxLength={6}
+                                value={loginOtp}
+                                onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, ''))}
+                                placeholder="Enter 6-digit code"
+                                className="w-full text-center tracking-[0.3em] font-mono text-base py-2.5 rounded-xl bg-[#1C1C22] border border-[#2E3038] text-white placeholder-[#71717A] focus:outline-none focus:border-[#FFD026]"
+                              />
+                            </div>
+                            <div className="text-right">
+                              <button
+                                type="button"
+                                onClick={handleSendLoginOtp}
+                                className="text-[11px] text-[#A1A1AA] hover:text-[#FFD026] cursor-pointer underline"
+                              >
+                                Resend Code
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={
+                        loading ||
+                        (loginMode === 'mobile' && loginMobile.length < 10) ||
+                        (loginMode === 'email' && !loginEmail) ||
+                        (loginMode === 'mobile' && loginMethod === 'otp' && (!loginOtpSent || loginOtp.length !== 6))
+                      }
+                      className="w-full py-2.5 rounded-xl bg-[#FFD026] hover:bg-[#F6B511] text-black font-extrabold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md disabled:opacity-50 mt-2"
+                    >
+                      {loading
+                        ? 'Signing in...'
+                        : loginMode === 'mobile'
+                        ? loginMethod === 'otp'
+                          ? 'Verify Code & Sign In'
+                          : 'Sign In with Mobile'
+                        : 'Sign In with Email'}
+                    </button>
+                  </>
+                )}
 
                 <div className="text-center pt-2 text-xs text-[#A1A1AA]">
                   Don't have an account?{' '}
