@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 import requests
-import soundfile as sf
+import wave
 from dotenv import load_dotenv
 
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -44,17 +44,30 @@ def get_model_info() -> dict[str, Any]:
         "has_api_key": bool(api_key),
     }
 
+def get_audio_duration(audio_path: str | Path) -> float | None:
+    path = Path(audio_path)
+    try:
+        with wave.open(str(path), "rb") as wf:
+            frames = wf.getnframes()
+            rate = wf.getframerate()
+            if rate > 0:
+                return float(frames) / float(rate)
+    except Exception:
+        pass
+    try:
+        import soundfile as sf
+        info = sf.info(str(path))
+        return float(info.duration)
+    except Exception:
+        pass
+    return None
+
 def transcribe_audio(audio_path: str | Path, language: str = "hi") -> TranscriptionResult:
     path = Path(audio_path)
     if not path.is_file():
         raise FileNotFoundError(f"Audio file not found: {path.resolve()}")
 
-    try:
-        info = sf.info(str(path))
-        audio_duration = float(info.duration)
-    except Exception as exc:
-        logger.warning("Could not read audio metadata for %s: %s", path, exc)
-        audio_duration = None
+    audio_duration = get_audio_duration(path)
 
     api_key = (
         os.getenv("BANDHON_AI_STT_API_KEY")

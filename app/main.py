@@ -25,7 +25,7 @@ from app.authentication.auth import (
 )
 from app.grpc_service.server import close_grpc_resources, get_grpc_client, get_grpc_server_manager
 from app.models.ai import get_llm_client
-from app.models.voice import get_model_info, load_model, transcribe_audio
+from app.models.voice import get_audio_duration, get_model_info, load_model, transcribe_audio
 from app.queries import customer as customer_queries
 from app.queries import notification as notification_queries
 from app.queries import product as product_queries
@@ -73,11 +73,12 @@ logger = logging.getLogger("dukaanai")
 async def lifespan(app: FastAPI):
     logger.info("Starting DukaanAI Backend with hardened production security...")
 
-    grpc_server = get_grpc_server_manager()
-    try:
-        grpc_server.start()
-    except Exception as exc:
-        logger.error("Failed to start gRPC LLM Service: %s", exc)
+    if not os.getenv("VERCEL"):
+        grpc_server = get_grpc_server_manager()
+        try:
+            grpc_server.start()
+        except Exception as exc:
+            logger.error("Failed to start gRPC LLM Service: %s", exc)
 
     try:
         load_model()
@@ -88,7 +89,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down DukaanAI Backend & gRPC services...")
-    close_grpc_resources()
+    if not os.getenv("VERCEL"):
+        close_grpc_resources()
     logger.info("DukaanAI Backend shutdown completed.")
 
 app = FastAPI(
@@ -890,18 +892,12 @@ async def transcribe_audio_endpoint(
                 except Exception as conv_err:
                     logger.warning("FFmpeg conversion fallback triggered: %s", conv_err)
 
-            import soundfile as sf
-            try:
-                snd_info = sf.info(str(target_path))
-                if snd_info.duration > MAX_AUDIO_DURATION_SEC:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Audio duration of {round(snd_info.duration, 1)}s exceeds limit of {int(MAX_AUDIO_DURATION_SEC)}s.",
-                    )
-            except HTTPException:
-                raise
-            except Exception as meta_err:
-                logger.warning("Soundfile audio duration pre-check: %s", meta_err)
+            dur = get_audio_duration(target_path)
+            if dur is not None and dur > MAX_AUDIO_DURATION_SEC:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Audio duration of {round(dur, 1)}s exceeds limit of {int(MAX_AUDIO_DURATION_SEC)}s.",
+                )
 
             result = transcribe_audio(target_path)
             if target_path != temp_path and target_path.exists():
