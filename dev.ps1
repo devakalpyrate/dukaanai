@@ -4,7 +4,7 @@ Write-Host "=========================================" -ForegroundColor Cyan
 
 $backendJob = Start-Job -ScriptBlock {
     Set-Location $using:PWD
-    & ".\.venv-voice\Scripts\python.exe" -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
+    & ".\.venv-voice\Scripts\python.exe" -m uvicorn app:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 }
 
 $frontendJob = Start-Job -ScriptBlock {
