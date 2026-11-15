@@ -41,7 +41,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
   const [loginMethod, setLoginMethod] = useState<'password' | 'otp'>('password');
   const [loginOtp, setLoginOtp] = useState('');
   const [loginOtpSent, setLoginOtpSent] = useState(false);
-  const [loginGeneratedOtp, setLoginGeneratedOtp] = useState('');
+  const [loginMaskedEmail, setLoginMaskedEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
   const [firstName, setFirstName] = useState('');
@@ -54,7 +54,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
   const [confirmPassword, setConfirmPassword] = useState('');
 
   const [otpInput, setOtpInput] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
+  const [regMaskedEmail, setRegMaskedEmail] = useState('');
   const [systemSender, setSystemSender] = useState('dukaanai@india');
 
   const [showPassword, setShowPassword] = useState(false);
@@ -121,13 +121,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
       if (!res.ok) {
         throw new Error(data.detail || data.error?.message || 'Failed to send verification code.');
       }
-      const code = data.otp || data.code;
-      setLoginGeneratedOtp(code);
-      setLoginOtp(code);
+      setLoginMaskedEmail(data.masked_email || '');
+      setLoginOtp('');
       setLoginOtpSent(true);
       showOtpNotice(
-        '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
-        'This is a prototype mode for temporary test use only.'
+        `📧 Code sent to ${data.masked_email || 'your registered email'}`,
+        'Please check your inbox or spam folder for the 6-digit code.'
       );
     } catch (err: any) {
       setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.OTP_SEND_FAILED));
@@ -193,8 +192,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
     setErrorMsg('');
 
     const cleanPhone = phone.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!cleanPhone || cleanPhone.length < 10) {
       setErrorMsg('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('Please enter a valid email address.');
       return;
     }
     if (!shopName.trim()) {
@@ -219,20 +223,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
       const res = await fetch(`${apiBase}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: cleanPhone }),
+        body: JSON.stringify({ phone: cleanPhone, email: cleanEmail }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.detail || data.error?.message || 'Failed to generate confirmation code.');
       }
 
-      setGeneratedOtp(data.otp);
-      setSystemSender(data.sent_from || 'dukaanai@india');
+      setRegMaskedEmail(data.masked_email || cleanEmail);
       setRegStep('otp');
       setOtpInput('');
       showOtpNotice(
-        '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
-        'This is a prototype mode for temporary test use only.'
+        `📧 Code sent to ${data.masked_email || cleanEmail}`,
+        'Please check your inbox or spam folder for the 6-digit verification code.'
       );
     } catch (err: any) {
       setErrorMsg(sanitizeErrorMessage(err, SAFE_MESSAGES.OTP_SEND_FAILED));
@@ -639,8 +642,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                         setErrorMsg('');
                         if (nextMethod === 'otp') {
                           showOtpNotice(
-                            '⚡ Prototype Testing: Demo mode active. Use the 6-digit code for testing.',
-                            'This is a prototype mode for temporary test use only.'
+                            '🔒 Secure Email Verification',
+                            'A 6-digit confirmation code will be dispatched to your registered email.'
                           );
                         }
                       }}
@@ -691,17 +694,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                       </button>
                     ) : (
                       <div className="space-y-3">
-                        {loginGeneratedOtp && (
-                          <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-center space-y-1">
-                            <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
-                              <span className="uppercase">Your Login Code:</span>
-                              <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Demo / Test Only</span>
-                            </div>
-                            <div className="text-xl font-mono font-black text-[#FFD026] tracking-widest select-all">
-                              {loginGeneratedOtp}
-                            </div>
+                        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
+                            <span className="uppercase flex items-center gap-1.5 text-[#FFD026]">
+                              <Mail className="w-3.5 h-3.5" /> Verification Sent
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Secure Email</span>
                           </div>
-                        )}
+                          <p className="text-xs text-[#CBD5E1]">
+                            Code sent to registered email: <strong className="text-white font-mono">{loginMaskedEmail || 'your email'}</strong>
+                          </p>
+                          <p className="text-[10px] text-amber-400/80">
+                            Please check your inbox or spam folder.
+                          </p>
+                        </div>
                         <div>
                           <label className="block text-xs font-bold text-[#F4F4F5] uppercase tracking-wider mb-1">
                             Enter 6-Digit Code
@@ -974,26 +980,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onSuccess, apiBase
                 <div>
                   <h2 className="text-xl font-black text-white tracking-tight">Verify Your Account</h2>
                   <p className="text-xs text-[#A1A1AA] mt-0.5">
-                    We generated a 6-digit confirmation code for <strong>{phone}</strong>.
+                    We sent a 6-digit confirmation code to activate your account.
                   </p>
                 </div>
 
-                {/* Display Confirmation Code Banner */}
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-1.5">
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-2">
                   <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider">
-                    <span className="flex items-center gap-1">
-                      <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Confirmation Code
+                    <span className="flex items-center gap-1.5 text-[#FFD026]">
+                      <Mail className="w-4 h-4 text-[#FFD026]" /> Email Verification Sent
                     </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-[#FFD026] text-[9px] font-mono">Demo / Test Only</span>
-                      <span className="font-mono text-[10px] text-amber-400">{systemSender}</span>
-                    </div>
+                    <span className="px-2 py-0.5 rounded bg-[#FFD026]/20 text-[#FFD026] text-[10px] font-mono">Secure OTP</span>
                   </div>
-                  <div className="text-2xl font-black tracking-widest text-[#FFD026] font-mono select-all">
-                    {generatedOtp}
-                  </div>
+                  <p className="text-xs text-[#CBD5E1] leading-relaxed">
+                    We sent a 6-digit confirmation code to <strong className="text-white font-mono">{regMaskedEmail || email}</strong>. Please check your inbox or spam folder.
+                  </p>
                   <p className="text-[10px] text-amber-400/80">
-                    Enter this 6-digit code below to activate your store.
+                    Valid for 5 minutes. Never share this code with anyone.
                   </p>
                 </div>
 

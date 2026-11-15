@@ -38,6 +38,7 @@ from app.services.business_logic import CustomerService, InventoryService, Produ
 from app.services.intent_executor import IntentExecutor
 from app.services.pdf_generator import generate_customer_ledger_pdf
 from app.services.price_discovery import get_market_price
+from app.services.email_service import mask_email, send_otp_email
 
 from app.security import config as sec_config
 from app.security.config import (
@@ -313,23 +314,43 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
     enforce_rate_limit(request, category="login")
     clean_phone = payload.phone.strip()
     clean_email = (payload.email or "").strip().lower()
+
+    target_email = clean_email
+    recipient_name = "Shop Owner"
+
+    if not target_email:
+        user = user_queries.get_user_credentials_by_email_or_phone(clean_phone)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account registered with this mobile number. Please register first.",
+            )
+        target_email = (user.get("email") or "").strip().lower()
+        recipient_name = user.get("name") or "Shop Owner"
+        if not target_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No registered email address found for this account. Please use password login.",
+            )
+
     import random
     code = f"{random.randint(100000, 999999)}"
     now = time.time()
-    ACTIVE_OTPS[clean_phone] = {"code": code, "email": clean_email, "created_at": now}
+    ACTIVE_OTPS[clean_phone] = {"code": code, "email": target_email, "created_at": now}
     digits = "".join(c for c in clean_phone if c.isdigit())
     if len(digits) >= 10:
-        ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": clean_email, "created_at": now}
-    if clean_email:
-        ACTIVE_OTPS[clean_email] = {"code": code, "phone": clean_phone, "created_at": now}
+        ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": target_email, "created_at": now}
+    if target_email:
+        ACTIVE_OTPS[target_email] = {"code": code, "phone": clean_phone, "created_at": now}
+
+    send_otp_email(target_email, code, recipient_name)
+    masked = mask_email(target_email)
+
     return {
         "success": True,
-        "message": f"Confirmation code sent to {clean_phone}.",
-        "code": code,
-        "otp": code,
+        "message": f"Verification code sent to your registered email ({masked}).",
+        "masked_email": masked,
         "phone": clean_phone,
-        "email": clean_email or "dukaanai@india",
-        "system_sender": "dukaanai@india"
     }
 
 @app.post(
@@ -365,8 +386,6 @@ def register_endpoint(request: Request, payload: RegisterPayload):
         if p_entry and p_entry["code"] == submitted_otp:
             matched = True
         elif e_entry and e_entry["code"] == submitted_otp:
-            matched = True
-        elif submitted_otp in ("123456", "000000"):
             matched = True
         
         if not matched:
