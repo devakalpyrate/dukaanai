@@ -12,7 +12,7 @@ DEFAULT_RATE_LIMITS: Dict[str, Dict[str, int]] = {
 
 MAX_CONCURRENT_VOICE_PER_USER: int = int(os.getenv("MAX_CONCURRENT_VOICE_PER_USER", "2"))
 MAX_AUDIO_UPLOAD_BYTES: int = int(os.getenv("MAX_AUDIO_UPLOAD_BYTES", str(25 * 1024 * 1024)))
-MAX_AUDIO_DURATION_SEC: float = float(os.getenv("MAX_AUDIO_DURATION_SEC", "60.0"))
+MAX_AUDIO_DURATION_SEC: float = float(os.getenv("MAX_AUDIO_DURATION_SEC", "30.0"))
 
 ALLOWED_AUDIO_EXTENSIONS = {".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac", ".webm", ".weba"}
 ALLOWED_AUDIO_MIME_TYPES = {

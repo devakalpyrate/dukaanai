@@ -1,10 +1,74 @@
-.venv-voice/
-.venv/
-__pycache__/
-*.pyc
-.git/
-tests/
-.idea/
-.vscode/
+# Environments & Secrets (Set via Vercel Project Settings)
+.env
+.env.*
+.env.local
+
+# Virtual environments & node dependencies
+.venv*/
+venv*/
+ENV/
+env/
 node_modules/
 frontend/node_modules/
+
+# Python cache & build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+.tox/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Version control & IDE configs
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+
+# Unit and integration tests
+tests/
+
+# Entire frontend workspace (backend/static already contains production assets)
+frontend/
+
+# Documentation, guides & Database migrations (executed directly on Supabase)
+*.md
+supabase_*.sql
+migrations/
+LICENSE
+
+# Presentations, PDFs, Pitch decks & Diagrams
+*.pptx
+*.ppt
+*.pdf
+generate_presentation.py
+PRESENTATION.md
+*-schema.svg
+
+# Audio recordings & Prompts
+prompts/
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.m4a
+*.aac
+*.webm
+recording_test.wav
+
+# Temporary, logs & cache files
+*.log
+logs/
+*.pid
+tmp/
+temp/
+.cache/
+*.tmp
+*.bak
+scratch/

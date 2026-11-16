@@ -11,14 +11,14 @@ def detect_language(text: str) -> str:
             return "hi"
         if 0x0B00 <= code <= 0x0B7F:
             return "or"
+        if 0x0B80 <= code <= 0x0BFF:
+            return "ta"
         if 0x0A00 <= code <= 0x0A7F:
             return "pa"
         if 0x0980 <= code <= 0x09FF:
             return "bn"
         if 0x0A80 <= code <= 0x0AFF:
             return "gu"
-        if 0x0B80 <= code <= 0x0BFF:
-            return "ta"
         if 0x0C00 <= code <= 0x0C7F:
             return "te"
         if 0x0C80 <= code <= 0x0CFF:
@@ -27,6 +27,25 @@ def detect_language(text: str) -> str:
             return "ml"
 
     tokens = set(re.findall(r"[a-zA-Z]+", cleaned.lower()))
+
+    # Romanized Tamil (Tanglish)
+    tamil_markers = {
+        "kadan", "roobai", "rubai", "panam", "kudutha", "kuduthar", "kuduthaar",
+        "evvalavu", "baakki", "bakki", "kadai", "seru", "seluthu", "vasool",
+        "mudinjathu", "podu", "illai", "aachi"
+    }
+    if tokens.intersection(tamil_markers):
+        return "ta-latn"
+
+    # Romanized Odia
+    odia_markers = {
+        "udhara", "tanka", "khatare", "dele", "dela", "jama", "dokan", "dokana",
+        "baki", "kete", "achhi", "lekh"
+    }
+    if tokens.intersection(odia_markers):
+        return "or-latn"
+
+    # Hinglish
     hinglish_markers = {
         "udhar", "udhaar", "jama", "likho", "likh", "rupaye", "rupay", "rupya",
         "ka", "ki", "ke", "ko", "ne", "se", "paise", "paisa", "bhai", "ji", "aaj", "kitna",
@@ -50,6 +69,9 @@ def get_localized_confirmation(
         "hi": f"नया ग्राहक {customer} बना। " if was_created else "",
         "hi-latn": f"Naya customer '{customer}' add hua. " if was_created else "",
         "or": f"ନୂଆ ଗ୍ରାହକ {customer} ତିଆରି ହେଲା। " if was_created else "",
+        "or-latn": f"Nua grahak '{customer}' add hela. " if was_created else "",
+        "ta": f"புதிய வாடிக்கையாளர் {customer} சேர்க்கப்பட்டார். " if was_created else "",
+        "ta-latn": f"Puthiya customer '{customer}' serkkappattaar. " if was_created else "",
         "pa": f"ਨਵਾਂ ਗਾਹਕ {customer} ਸ਼ਾਮਲ ਹੋਇਆ। " if was_created else "",
         "bn": f"নতুন গ্রাহক {customer} তৈরি হয়েছে। " if was_created else "",
         "gu": f"નવો ગ્રાહક {customer} ઉમેરાયો. " if was_created else "",
@@ -62,8 +84,10 @@ def get_localized_confirmation(
             return f"{prefix}{customer} के खाते में ₹{amt_str} का उधार दर्ज कर दिया गया है।"
         elif lang == "hi-latn":
             return f"{prefix}{customer} ke khate mein ₹{amt_str} ka udhaar likh diya gaya hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"{prefix}{customer}ଙ୍କ ଖାତାରେ ₹{amt_str} ଉଧାର ଲେଖାଗଲା।"
+        elif lang in ("ta", "ta-latn"):
+            return f"{prefix}{customer} கணக்கில் ₹{amt_str} கடன் பதிவு செய்யப்பட்டது."
         elif lang == "pa":
             return f"{prefix}{customer} ਦੇ ਖਾਤੇ ਵਿੱਚ ₹{amt_str} ਦਾ ਉਧਾਰ ਦਰਜ ਕਰ ਦਿੱਤਾ ਗਿਆ ਹੈ।"
         elif lang == "bn":
@@ -78,8 +102,10 @@ def get_localized_confirmation(
             return f"{customer} से ₹{amt_str} का भुगतान प्राप्त हो गया है।"
         elif lang == "hi-latn":
             return f"{customer} se ₹{amt_str} ka payment jama ho gaya hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"{customer}ଙ୍କଠାରୁ ₹{amt_str} ଜମା ଗ୍ରହଣ କରାଗଲା।"
+        elif lang in ("ta", "ta-latn"):
+            return f"{customer} இடமிருந்து ₹{amt_str} பணம் பெறப்பட்டது."
         elif lang == "pa":
             return f"{customer} ਤੋਂ ₹{amt_str} ਦਾ ਭੁਗਤਾਨ ਪ੍ਰਾਪਤ ਹੋਇਆ ਹੈ।"
         elif lang == "bn":
@@ -94,8 +120,10 @@ def get_localized_confirmation(
             return f"{customer} का पूरा ₹{amt_str} का उधार चुकता कर दिया गया है। बैलेंस अब ₹0.00 है।"
         elif lang == "hi-latn":
             return f"{customer} ka pura ₹{amt_str} ka udhaar clear ho gaya hai. Balance ab ₹0.00 hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"{customer}ଙ୍କ ସମସ୍ତ ₹{amt_str} ଉଧାର କ୍ଲିୟର ହୋଇଗଲା। ବାକି ଏବେ ₹0.00 ଅଛି।"
+        elif lang in ("ta", "ta-latn"):
+            return f"{customer} அவர்களின் அனைத்து ₹{amt_str} கடன் பாக்கியும் தீர்க்கப்பட்டது. தற்போதைய பாக்கி ₹0.00."
         elif lang == "pa":
             return f"{customer} ਦਾ ਪੂਰਾ ₹{amt_str} ਦਾ ਉਧਾਰ ਕਲੀਅਰ ਹੋ ਗਿਆ ਹੈ। ਬਾਕੀ ਹੁਣ ₹0.00 ਹੈ।"
         elif lang == "bn":
@@ -110,8 +138,10 @@ def get_localized_confirmation(
             return f"{customer} का कोई बाकी उधार नहीं है। बैलेंस ₹0.00 है।"
         elif lang == "hi-latn":
             return f"{customer} ka koi baki udhaar nahi hai. Balance ₹0.00 hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"{customer}ଙ୍କ କୌଣସି ବାକି ଉଧାର ନାହିଁ। ବାକି ₹0.00 ଅଛି।"
+        elif lang in ("ta", "ta-latn"):
+            return f"{customer} அவர்களுக்கு எந்த பாக்கியும் இல்லை. இருப்பு ₹0.00."
         else:
             return f"No outstanding dues for {customer}. Balance is Rs 0.00."
 
@@ -120,8 +150,10 @@ def get_localized_confirmation(
             return f"ग्राहक {customer} सफलतापूर्वक जुड़ गया है।"
         elif lang == "hi-latn":
             return f"Customer {customer} safalta-purvak add ho gaya hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"ଗ୍ରାହକ {customer} ସଫଳତାର ସହିତ ଯୋଡ଼ାଗଲା।"
+        elif lang in ("ta", "ta-latn"):
+            return f"வாடிக்கையாளர் {customer} வெற்றிகரமாக சேர்க்கப்பட்டார்."
         else:
             return f"Customer '{customer}' added successfully."
 
@@ -130,8 +162,10 @@ def get_localized_confirmation(
             return f"प्रोडक्ट {customer} ₹{amt_str} पर स्टोर में जुड़ गया है।"
         elif lang == "hi-latn":
             return f"Product {customer} ₹{amt_str} par store mein add ho gaya hai."
-        elif lang == "or":
+        elif lang in ("or", "or-latn"):
             return f"ପ୍ରଡକ୍ଟ {customer} ₹{amt_str} ରେ ଯୋଡ଼ାଗଲା।"
+        elif lang in ("ta", "ta-latn"):
+            return f"{customer} பொருள் ₹{amt_str} விலையில் சேர்க்கப்பட்டது."
         else:
             return f"Product '{customer}' added at Rs {amt_str}."
 

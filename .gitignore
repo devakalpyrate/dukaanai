@@ -57,8 +57,8 @@ pnpm-debug.log*
 *.m4a
 *.aac
 *.webm
-!recording_test.wav
-!prompts/*.wav
+recording_test.wav
+prompts/
 
 # AI weights & model checkpoints
 *.pt
@@ -83,18 +83,26 @@ hf_cache/
 Thumbs.db
 desktop.ini
 
-# Logs & temp
+# Logs, scratch & temp
 *.log
 logs/
 *.pid
 tmp/
 temp/
 .cache/
+*.tmp
+*.bak
+scratch/
 
-# Presentations & local deck scripts
+# Presentations, PDFs & local deck assets
 *.pptx
 *.ppt
+*.pdf
 generate_presentation.py
+PRESENTATION.md
+
+# Large schema diagrams & exports
+*-schema.svg
 
 # Local landing page showcase
 landing/

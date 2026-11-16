@@ -42,7 +42,7 @@ class ShopVerificationService:
         validated_shop_id = validate_id(shop_id, "shop_id")
         shop = shop_queries.get_shop_by_id(validated_shop_id)
         if not shop:
-            raise EntityNotFoundError(f"Shop with ID {validated_shop_id} does not exist")
+            raise EntityNotFoundError("Dukaan database me darj nahi hai")
         return shop
 
 class CustomerService:
@@ -62,7 +62,7 @@ class CustomerService:
 
         matches = customer_queries.search_customers(shop_id, query_str)
         if not matches:
-            raise EntityNotFoundError(f"No customer found matching '{query_str}' in shop {shop_id}")
+            raise EntityNotFoundError(f"Grahak '{query_str}' aapke dukaan par darj nahi hai")
 
         exact_matches = [
             c for c in matches
@@ -103,7 +103,7 @@ class CustomerService:
         c_id = validate_id(customer_id, "customer_id")
         existing = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
         if not existing:
-            raise EntityNotFoundError(f"Customer ID {c_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Grahak aapke dukaan par darj nahi hai")
 
         v_name = validate_string(name, "name", max_length=100, required=False) if name is not None else None
         v_phone = validate_string(phone, "phone", max_length=15, required=False) if phone is not None else None
@@ -118,7 +118,7 @@ class CustomerService:
         c_id = validate_id(customer_id, "customer_id")
         existing = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
         if not existing:
-            raise EntityNotFoundError(f"Customer ID {c_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Grahak aapke dukaan par darj nahi hai")
 
         return customer_queries.delete_customer(c_id, shop_id=shop_id)
 
@@ -182,7 +182,7 @@ class ProductService:
 
         matches = product_queries.search_products(shop_id, q_name)
         if not matches:
-            raise EntityNotFoundError(f"No product found matching '{q_name}' in shop {shop_id}")
+            raise EntityNotFoundError(f"Product '{q_name}' aapke dukaan par nahi hai")
 
         exact_matches = [p for p in matches if p["name"].lower() == q_name.lower()]
         if len(exact_matches) == 1:
@@ -212,7 +212,7 @@ class ProductService:
         p_id = validate_id(product_id, "product_id")
         existing = product_queries.get_product_by_id(p_id)
         if not existing or existing["shop_id"] != shop_id:
-            raise EntityNotFoundError(f"Product ID {p_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Product aapke dukaan par nahi hai")
 
         v_name = validate_string(name, "name", max_length=100, required=False) if name is not None else None
         v_price = validate_decimal(price, "price", min_value=Decimal("0.00"), allow_zero=True) if price is not None else None
@@ -264,7 +264,7 @@ class ProductService:
         p_id = validate_id(product_id, "product_id")
         existing = product_queries.get_product_by_id(p_id)
         if not existing or existing["shop_id"] != shop_id:
-            raise EntityNotFoundError(f"Product ID {p_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Product aapke dukaan par nahi hai")
 
         return product_queries.delete_product(p_id)
 
@@ -294,7 +294,7 @@ class TransactionService:
         c_id = validate_id(customer_id, "customer_id")
         cust = customer_queries.get_customer_by_id(c_id, shop_id=shop_id)
         if not cust:
-            raise EntityNotFoundError(f"Customer ID {c_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Grahak aapke dukaan par darj nahi hai")
 
         t_type = validate_transaction_type(transaction_type)
         v_amount = validate_decimal(amount, "amount", min_value=Decimal("0.01"), allow_zero=False)
@@ -366,7 +366,7 @@ class InventoryService:
         p_id = validate_id(product_id, "product_id")
         prod = product_queries.get_product_by_id(p_id)
         if not prod or prod["shop_id"] != shop_id:
-            raise EntityNotFoundError(f"Product ID {p_id} does not belong to shop {shop_id}")
+            raise EntityNotFoundError("Product aapke dukaan par nahi hai")
 
         v_change = validate_decimal(
             quantity_change,

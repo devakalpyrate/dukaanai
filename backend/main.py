@@ -1,3 +1,4 @@
+import asyncio
 import random
 import time
 import uuid
@@ -8,7 +9,7 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, Optional
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, Response
@@ -117,6 +118,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -279,6 +281,8 @@ ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 
 class SpeakPayload(BaseModel):
     text: str = Field(..., min_length=1, max_length=500, description="Text to synthesize to speech")
+    voice: Optional[str] = Field("Amit", description="Voice profile for synthesis")
+    lang: Optional[str] = Field(None, description="Language code for synthesis (e.g. hi, or, ta, en)")
 
 security_scheme = HTTPBearer(auto_error=False)
 
@@ -310,7 +314,7 @@ def get_current_shop(
         )
     
     shop = shop_queries.get_shop_by_id(shop_id)
-    if not shop or shop["owner_id"] != user_id:
+    if not shop or str(shop["owner_id"]) != str(user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Unauthorized shop access.",
@@ -351,7 +355,6 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
                 detail="No registered email address found for this account. Please use password login.",
             )
 
-    import random
     code = f"{random.randint(100000, 999999)}"
     now = time.time()
     ACTIVE_OTPS[clean_phone] = {"code": code, "email": target_email, "created_at": now}
@@ -515,7 +518,6 @@ def login_endpoint(request: Request, payload: LoginPayload):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Password or OTP is required to log in.",
             )
-        import random
         code = f"{random.randint(100000, 999999)}"
         now = time.time()
         user_email = (user.get("email") or "").lower()
@@ -756,6 +758,79 @@ def clear_notifications_endpoint(
     notification_queries.clear_all_notifications(shop_id)
     return {"success": True, "message": "All notifications cleared."}
 
+@app.delete(
+    "/api/account",
+    summary="Permanently delete merchant account and send final transaction statement to email",
+)
+async def delete_account_endpoint(
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    user_id = int(current_shop["user_id"])
+    shop_id = int(current_shop["shop_id"])
+
+    # 1. Fetch user and shop details
+    user = user_queries.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User account not found.",
+        )
+
+    shop = shop_queries.get_shop_by_id(shop_id) or {"shop_name": current_shop.get("shop_name", "Meri Dukaan")}
+
+    # 2. Collect all transactions and financial summary for the shop
+    transactions = transaction_queries.get_transactions_by_shop(shop_id)
+    financial_summary = transaction_queries.get_shop_financial_summary_in_db(shop_id)
+
+    # 3. Generate in-memory PDF statement & dispatch via Email
+    user_email = user.get("email") or current_shop.get("email")
+    owner_name = user.get("name") or "Shop Owner"
+    shop_name = shop.get("shop_name") or current_shop.get("shop_name") or "Your Store"
+
+    if user_email and "@" in user_email:
+        pdf_bytes = None
+        try:
+            from backend.services.pdf_generator import generate_final_shop_statement_pdf
+            pdf_bytes = generate_final_shop_statement_pdf(
+                shop_data=shop,
+                user_data=user,
+                transactions=transactions,
+                summary_info=financial_summary,
+            )
+        except Exception as pdf_err:
+            logger.warning("PDF generation skipped for account deletion email: %s", pdf_err)
+
+        try:
+            from backend.services.email_service import send_account_deletion_statement_email
+            await asyncio.to_thread(
+                send_account_deletion_statement_email,
+                to_email=user_email,
+                recipient_name=owner_name,
+                shop_name=shop_name,
+                transactions=transactions,
+                summary_info=financial_summary,
+                pdf_bytes=pdf_bytes,
+            )
+        except Exception as mail_err:
+            logger.error("Failed to send account deletion statement email: %s", mail_err)
+
+    # 4. Permanently delete user from Supabase (CASCADE deletes shop, customers, txs, inventory, etc.)
+    success = user_queries.delete_user(user_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account. Please try again.",
+        )
+
+    logger.info("Permanently deleted user %d (shop %d). Statement dispatched to %s", user_id, shop_id, user_email)
+
+    return {
+        "success": True,
+        "message": "Account and all store data permanently deleted. A final transaction statement has been emailed to you.",
+        "archived_transactions": len(transactions),
+    }
+
 @app.patch(
     "/api/notifications/{notification_id}/read",
     summary="Mark single notification as read",
@@ -827,6 +902,7 @@ def health_check():
 async def transcribe_audio_endpoint(
     request: Request,
     file: UploadFile = File(..., description="Audio file to transcribe (e.g., .wav, .mp3)"),
+    language: Optional[str] = Form(None, description="Language code for transcription (e.g. hi, or, ta, en)"),
     current_shop: Dict[str, Any] = Depends(get_current_shop),
 ):
     user_id_str = str(current_shop["user_id"])
@@ -912,7 +988,17 @@ async def transcribe_audio_endpoint(
                     detail=f"Audio duration of {round(dur, 1)}s exceeds limit of {int(MAX_AUDIO_DURATION_SEC)}s.",
                 )
 
-            result = transcribe_audio(target_path)
+            shop_lang = None
+            try:
+                from backend.queries.settings import get_settings_by_shop_id
+                shop_settings = get_settings_by_shop_id(current_shop["id"])
+                if shop_settings and shop_settings.get("language"):
+                    shop_lang = shop_settings.get("language")
+            except Exception:
+                pass
+            effective_lang = (language or shop_lang or "hi").strip().lower()
+
+            result = transcribe_audio(target_path, language=effective_lang)
             if target_path != temp_path and target_path.exists():
                 try:
                     os.remove(target_path)
@@ -955,34 +1041,36 @@ async def speak_text_endpoint(
     current_shop: Dict[str, Any] = Depends(get_current_shop),
 ):
     enforce_rate_limit(request, category="intent", user_id=str(current_shop["user_id"]))
-    clean_text = payload.text.strip()
+    clean_text = (payload.text or "").strip()
     if not clean_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Text cannot be empty.",
         )
-    if len(clean_text) > 300:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Text exceeds maximum store speech confirmation limit of 300 characters.",
-        )
+    if len(clean_text) > 280:
+        clean_text = clean_text[:280]
+
     forbidden_terms = ["mysql", "postgresql", "sqlite", "database", "schema", "table", "fastapi", "uvicorn", "gunicorn", "backend", "architecture", "endpoint"]
     for term in forbidden_terms:
         if term in clean_text.lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Store speech content cannot contain internal system or technical architecture terms.",
-            )
+            clean_text = clean_text.replace(term, "")
+
     try:
         from backend.models.tts import synthesize_speech
-        out_file = synthesize_speech(clean_text)
+        out_file = await asyncio.to_thread(
+            synthesize_speech,
+            clean_text,
+            voice=payload.voice or "Amit",
+            lang=payload.lang or None,
+        )
         return FileResponse(out_file, media_type="audio/wav", filename="speech.wav")
     except Exception as exc:
-        logger.error("TTS generation error: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Unable to process your voice request. Please try again.",
-        ) from exc
+        logger.warning("TTS generation fallback: %s", exc)
+        from backend.models.tts import generate_fallback_silence_wav
+        fd, fallback_path = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        generate_fallback_silence_wav(fallback_path)
+        return FileResponse(fallback_path, media_type="audio/wav", filename="speech.wav", headers={"X-TTS-Fallback": "browser"})
 
 @app.get(
     "/api/voice/samples/{filename}",
@@ -1010,6 +1098,33 @@ def understand_intent_endpoint(
     current_shop: Dict[str, Any] = Depends(get_current_shop),
 ):
     enforce_rate_limit(request, category="intent", user_id=str(current_shop["user_id"]))
+    clean_text = (payload.text or "").strip()
+    silence_artifacts = {
+        "", ".", "..", "...", "?", "!", "-", "--", "[silence]",
+        "[music]", "[applause]", "thank you", "thank you.", "thank you very much.",
+        "thanks", "thanks.", "subtitles by", "subtitles", "you", "you.",
+        "null", "undefined", "bye", "goodbye", "amara.org", "mbc",
+        "ha", "haan", "haan ji", "haanji", "hmm", "um", "uh", "ok", "okay", "so", "k", "yeah",
+        "हाँ", "हाँ।", "हां", "हाँ जी", "हाँजी", "हो", "नमस्ते", "हेलो",
+        "चलो", "ठीक है", "बाय", "शुक्रिया", "धन्यवाद", "धन्यवाद।", "जी", "जी हाँ", "जी हां"
+    }
+    if not clean_text or clean_text.lower() in silence_artifacts or len(clean_text) < 2 or not any(c.isalnum() for c in clean_text):
+        return UnderstandIntentResponseModel(
+            success=False,
+            intent="none",
+            action="none",
+            parameters={},
+            entities={},
+            original_text=payload.text or "",
+            normalized_text="",
+            normalization={},
+            confidence=0.0,
+            requires_confirmation=False,
+            clarification_needed=False,
+            clarification_question=None,
+            error_message="No voice activity detected",
+        )
+
     try:
         verified_shop_id = current_shop["shop_id"]
         if os.getenv("VERCEL"):

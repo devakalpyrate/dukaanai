@@ -1,6 +1,7 @@
+import logging
 import re
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 from backend.queries import customer as customer_queries
 from backend.queries import notification as notification_queries
@@ -9,6 +10,8 @@ from backend.queries import shops as shop_queries
 from backend.queries import supplier as supplier_queries
 from backend.queries import transaction as transaction_queries
 from backend.services.price_discovery import get_market_price
+
+logger = logging.getLogger(__name__)
 from backend.services.business_logic import (
     AmbiguousEntityError,
     BusinessLogicError,
@@ -63,16 +66,18 @@ def parse_spoken_amount(text: str) -> Optional[Decimal]:
 def sanitize_public_message(text: Optional[str]) -> str:
     if not text:
         return ""
+    cleaned = re.sub(r'(?:in|for|from)?\s*shop\s*(?:id)?\s*[:=]?\s*\d+', 'aapke dukaan par', text, flags=re.IGNORECASE)
+    cleaned = re.sub(r'shop_id\s*[:=]?\s*\d+', '', cleaned, flags=re.IGNORECASE)
     forbidden_terms = [
         "mysql", "postgresql", "sqlite", "database", "schema", "table",
         "fastapi", "uvicorn", "gunicorn", "backend", "architecture", "endpoint",
         "grpc", "normaliz", "traceback", "exception", "deadlock", "internal error"
     ]
-    lower = text.lower()
+    lower = cleaned.lower()
     for term in forbidden_terms:
         if term in lower:
             return "Kripya dobara prayas karein ya jaankari spasht karein."
-    return text
+    return cleaned.strip()
 
 class ExecutionResult:
     def __init__(
@@ -120,6 +125,162 @@ class ExecutionResult:
         }
 
 class IntentExecutor:
+    @staticmethod
+    def _execute_batch_stock_addition(
+        shop_id: int,
+        items_list: list,
+        action: str,
+        orig_text: str,
+        norm_text: str,
+        norm_meta: Optional[Dict[str, Any]],
+    ) -> ExecutionResult:
+        if not isinstance(items_list, list) or len(items_list) == 0:
+            return ExecutionResult(
+                success=True,
+                action=action,
+                clarification_needed=True,
+                clarification_question="Kripya products aur unki quantity batayein.",
+                original_text=orig_text,
+            )
+
+        added_items = []
+        failed_items = []
+        item_summaries = []
+
+        unit_map = {
+            "किलो": "kilo", "केजी": "kilo", "kg": "kilo", "kgs": "kilo", "kilogram": "kilo",
+            "लीटर": "litre", "लीटरों": "litre", "l": "litre", "ltr": "litre", "litre": "litre", "litres": "litre",
+            "पैकेट": "packet", "पैकेटों": "packet", "pkt": "packet", "packet": "packet", "packets": "packet",
+            "पीस": "piece", "पीसों": "piece", "pc": "piece", "pcs": "piece", "piece": "piece", "pieces": "piece",
+            "बोरी": "bori", "बोरीयां": "bori", "bag": "bori", "bags": "bori", "bori": "bori"
+        }
+
+        for itm in items_list:
+            if not isinstance(itm, dict):
+                continue
+            p_name = (itm.get("product_name") or itm.get("name") or "").strip()
+            raw_qty = itm.get("quantity") or itm.get("quantity_change")
+            raw_unit = (itm.get("unit") or "kilo").strip().lower()
+            unit = unit_map.get(raw_unit, raw_unit)
+            price = itm.get("price")
+
+            if not p_name or raw_qty is None:
+                continue
+
+            try:
+                if isinstance(raw_qty, str):
+                    nums = re.findall(r"[-+]?\d*\.?\d+", raw_qty)
+                    qty_val = Decimal(nums[0]) if nums else Decimal("0.00")
+                else:
+                    qty_val = Decimal(str(raw_qty))
+
+                if qty_val <= Decimal("0.00"):
+                    continue
+            except Exception:
+                continue
+
+            try:
+                matches = product_queries.search_products(shop_id, p_name)
+                exact_prod = next((p for p in matches if p["name"].lower() == p_name.lower()), None) if matches else None
+                existing_price = Decimal(str(exact_prod["price"])) if exact_prod and exact_prod.get("price") is not None else Decimal("0.00")
+
+                v_price = Decimal("0.00")
+                if price is not None and str(price).strip():
+                    try:
+                        v_price = Decimal(str(price))
+                    except Exception:
+                        pass
+
+                if existing_price <= Decimal("0.00") and v_price <= Decimal("0.00"):
+                    try:
+                        disc = get_market_price(p_name, unit)
+                        if disc and disc.get("price") and float(disc["price"]) > 0:
+                            v_price = Decimal(str(disc["price"]))
+                    except Exception:
+                        pass
+
+                final_price = v_price if v_price > Decimal("0.00") else existing_price
+
+                res_prod, was_created = ProductService.resolve_or_create_product(
+                    shop_id=shop_id,
+                    product_name=p_name,
+                    price=final_price,
+                    unit=unit or (exact_prod["unit"] if exact_prod else "kilo"),
+                    auto_create=True,
+                )
+
+                if v_price > Decimal("0.00") and float(res_prod.get("price") or 0) != float(v_price):
+                    try:
+                        ProductService.update_product_price(shop_id, res_prod["id"], float(v_price))
+                    except Exception:
+                        pass
+
+                adj = InventoryService.adjust_stock(
+                    shop_id=shop_id,
+                    product_id=res_prod["id"],
+                    quantity_change=qty_val,
+                    reason="voice_batch_add_stock",
+                )
+
+                u_label = res_prod.get("unit") or unit or "kilo"
+                added_items.append({
+                    "product_id": res_prod["id"],
+                    "product_name": res_prod["name"],
+                    "quantity_added": float(qty_val),
+                    "unit": u_label,
+                    "new_stock": adj["new_quantity"],
+                    "price": float(final_price),
+                    "was_created": was_created,
+                })
+                display_qty = int(qty_val) if qty_val % 1 == 0 else qty_val
+                item_summaries.append(f"{res_prod['name']} {display_qty} {u_label}")
+            except Exception as itm_err:
+                logger.error("Failed to add batch item '%s': %s", p_name, itm_err)
+                failed_items.append({"product_name": p_name, "error": str(itm_err)})
+
+        if not added_items:
+            return ExecutionResult(
+                success=False,
+                action=action,
+                error_message="Koi bhi item stock me add nahi ho saka. Kripya naam aur quantity check karein.",
+                original_text=orig_text,
+            )
+
+        PendingContextManager.clear(shop_id)
+
+        if len(item_summaries) == 1:
+            items_str = item_summaries[0]
+        elif len(item_summaries) == 2:
+            items_str = f"{item_summaries[0]} aur {item_summaries[1]}"
+        else:
+            items_str = f"{', '.join(item_summaries[:-1])}, aur {item_summaries[-1]}"
+
+        lang = detect_language(orig_text or norm_text)
+        if lang in ("ta", "ta-latn"):
+            spoken_msg = f"சரி, {items_str} உங்கள் கடையின் இருப்பில் வெற்றிகரமாக சேர்க்கப்பட்டது."
+        elif lang in ("or", "or-latn"):
+            spoken_msg = f"ଠିକ୍ ଅଛି, {items_str} ଆପଣଙ୍କ ଦୋକାନ ଷ୍ଟକରେ ସଫଳତାର ସହିତ ଯୋଡ଼ାଗଲା।"
+        elif lang == "hi":
+            spoken_msg = f"ठीक है, {items_str} आपकी दुकान के स्टॉक में सफलतापूर्वक जोड़ दिए गए हैं।"
+        else:
+            spoken_msg = f"Theek hai, {items_str} aapki dukaan ke stock me safalta-purvak save kar diye gaye hain."
+        audit_msg = f"Batch stock added: {len(added_items)} items ({', '.join(item_summaries)})."
+
+        return ExecutionResult(
+            success=True,
+            action="batch_add_stock",
+            result={
+                "items": added_items,
+                "failed": failed_items,
+                "total_items": len(added_items),
+            },
+            message=audit_msg,
+            spoken_message=spoken_msg,
+            original_text=orig_text,
+            normalized_text=norm_text,
+            normalization_notes=norm_meta,
+        )
+
     @staticmethod
     def execute(intent_data: Dict[str, Any], confirmed: bool = False, request_id: Optional[str] = None) -> ExecutionResult:
         intent = intent_data.get("intent", "unknown")
@@ -249,8 +410,10 @@ class IntentExecutor:
                     if count == 0:
                         if lang == "hi":
                             spoken_msg = "आपकी दुकान की लिस्ट में अभी कोई ग्राहक नहीं है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = "ଆପଣଙ୍କ ଦୋକାନ ତାଲିକାରେ ବର୍ତ୍ତମାନ କୌଣସି ଗ୍ରାହକ ନାହାଁନ୍ତି।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = "உங்கள் வாடிக்கையாளர் பட்டியலில் தற்போது யாரும் இல்லை."
                         else:
                             spoken_msg = "You have no customers in your store yet."
                         return ExecutionResult(success=True, action="list_customers", result={"customers": [], "total_count": 0, "total_debt": 0.0}, message="No customers found.", spoken_message=spoken_msg, detected_language=lang, original_text=orig_text)
@@ -263,8 +426,10 @@ class IntentExecutor:
 
                     if lang == "hi":
                         spoken_msg = f"आपकी दुकान में कुल {count} ग्राहक हैं और कुल बकाया उधार ₹{total_debt:,.2f} है। इनमें {names_str} शामिल हैं।"
-                    elif lang == "or":
+                    elif lang in ("or", "or-latn"):
                         spoken_msg = f"ଆପଣଙ୍କ ଦୋକାନରେ ମୋଟ {count} ଜଣ ଗ୍ରାହକ ଅଛନ୍ତି ଏବଂ ମୋଟ ବାକି ଉଧାର ₹{total_debt:,.2f} ଅଛି।"
+                    elif lang in ("ta", "ta-latn"):
+                        spoken_msg = f"உங்கள் கடையில் மொத்தம் {count} வாடிக்கையாளர்கள் உள்ளனர். மொத்த கடன் பாக்கி ₹{total_debt:,.2f}."
                     elif lang == "hi-latn":
                         spoken_msg = f"Aapki dukan me total {count} grahak hain aur kul baki udhaar ₹{total_debt:,.2f} hai. Inme {names_str} shamil hain."
                     else:
@@ -303,8 +468,10 @@ class IntentExecutor:
                     if not top_list:
                         if lang == "hi":
                             spoken_msg = "आपकी दुकान में किसी भी ग्राहक का कोई बकाया उधार नहीं है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = "ଆପଣଙ୍କ ଦୋକାନରେ କୌଣସି ଗ୍ରାହକଙ୍କ ବାକି ଉଧାର ନାହିଁ।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = "உங்கள் கடையில் எந்த வாடிக்கையாளருக்கும் கடன் பாக்கி இல்லை."
                         else:
                             spoken_msg = "No customers have outstanding debt."
                         return ExecutionResult(success=True, action="top_debtors", result={"top_debtors": [], "limit": limit_val}, message="No active debtors found.", spoken_message=spoken_msg, detected_language=lang, original_text=orig_text)
@@ -312,8 +479,10 @@ class IntentExecutor:
                     items_str = ", ".join(f"{i+1}. {c['name']} (₹{float(c['balance']):,.2f})" for i, c in enumerate(top_list))
                     if lang == "hi":
                         spoken_msg = f"सबसे ज़्यादा उधार वाले टॉप {len(top_list)} ग्राहक हैं: {items_str}।"
-                    elif lang == "or":
+                    elif lang in ("or", "or-latn"):
                         spoken_msg = f"ସର୍ବାଧିକ ଉଧାର ଥିବା ଟପ୍ {len(top_list)} ଗ୍ରାହକ ହେଲେ: {items_str}।"
+                    elif lang in ("ta", "ta-latn"):
+                        spoken_msg = f"அதிக கடன் உள்ள முதல் {len(top_list)} வாடிக்கையாளர்கள்: {items_str}."
                     elif lang == "hi-latn":
                         spoken_msg = f"Sabse jyada udhaar wale top {len(top_list)} grahak hain: {items_str}."
                     else:
@@ -359,8 +528,10 @@ class IntentExecutor:
                     if not matches:
                         if lang == "hi":
                             spoken_msg = f"आपकी दुकान में ₹{threshold:,.2f} से अधिक बकाया उधार किसी का भी नहीं है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"ଆପଣଙ୍କ ଦୋକାନରେ ₹{threshold:,.2f} ରୁ ଅଧିକ ବାକି ଉଧାର କାହାରି ନାହିଁ।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = f"உங்கள் கடையில் ₹{threshold:,.2f} க்கு மேல் யாருக்கும் கடன் பாக்கி இல்லை."
                         elif lang == "hi-latn":
                             spoken_msg = f"Aapki dukan me ₹{threshold:,.2f} se jyada baki udhaar kisi ka bhi nahi hai."
                         else:
@@ -369,8 +540,10 @@ class IntentExecutor:
                         items_str = ", ".join(f"{c['name']} (₹{float(c['balance']):,.2f})" for c in matches)
                         if lang == "hi":
                             spoken_msg = f"₹{threshold:,.2f} से ज़्यादा उधार वाले {len(matches)} ग्राहक हैं: {items_str}।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"₹{threshold:,.2f} ରୁ ଅଧିକ ଉଧାର ଥିବା {len(matches)} ଜଣ ଗ୍ରାହକ ହେଲେ: {items_str}।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = f"₹{threshold:,.2f} க்கு மேல் கடன் உள்ள {len(matches)} வாடிக்கையாளர்கள்: {items_str}."
                         elif lang == "hi-latn":
                             spoken_msg = f"₹{threshold:,.2f} se jyada udhaar wale {len(matches)} grahak hain: {items_str}."
                         else:
@@ -394,16 +567,20 @@ class IntentExecutor:
                     if not cleared:
                         if lang == "hi":
                             spoken_msg = "अभी किसी भी ग्राहक का उधार पूरी तरह चुकता नहीं है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = "ବର୍ତ୍ତମାନ କୌଣସି ଗ୍ରାହକଙ୍କ ଉଧାର ସମ୍ପୂର୍ଣ୍ଣ କ୍ଲିୟର ହୋଇନାହିଁ।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = "தற்போது எந்த வாடிக்கையாளரின் கடனும் முழுமையாக தீர்க்கப்படவில்லை."
                         else:
                             spoken_msg = "No customers currently have cleared their dues."
                     else:
                         names_str = ", ".join(c["name"] for c in cleared)
                         if lang == "hi":
                             spoken_msg = f"इन ग्राहकों का पूरा उधार चुकता हो चुका है: {names_str}। इनका बैलेंस अब ₹0.00 है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"ଏହି ଗ୍ରାହକମାନଙ୍କର ସମସ୍ତ ଉଧାର କ୍ଲିୟର ହୋଇଯାଇଛି: {names_str}। ବାକି ଏବେ ₹0.00 ଅଛି।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = f"இந்த வாடிக்கையாளர்களின் கடன் முழுவதும் தீர்க்கப்பட்டது: {names_str}. பாக்கி ₹0.00."
                         elif lang == "hi-latn":
                             spoken_msg = f"In grahakon ka pura udhaar clear ho chuka hai: {names_str}. Balance ab ₹0.00 hai."
                         else:
@@ -436,8 +613,10 @@ class IntentExecutor:
                         tot_pd = float(bal_info["total_paid"]) if bal_info else 0.0
                         if lang == "hi":
                             spoken_msg = f"{resolved['name']} का कुल उधार ₹{tot_cr:,.2f}, जमा ₹{tot_pd:,.2f}, और वर्तमान बकाया ₹{bal:,.2f} है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"{resolved['name']}ଙ୍କ ମୋଟ ବାକି ଉଧାର ₹{bal:,.2f} ଅଛି।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = f"{resolved['name']} அவர்களின் மொத்த கடன் பாக்கி ₹{bal:,.2f}."
                         elif lang == "hi-latn":
                             spoken_msg = f"{resolved['name']} ka kul udhaar ₹{tot_cr:,.2f}, jama ₹{tot_pd:,.2f}, aur baki ₹{bal:,.2f} hai."
                         else:
@@ -510,8 +689,13 @@ class IntentExecutor:
                                 spoken_msg = f"{resolved_cust['name']} से ₹{tx['amount']:,.2f} का भुगतान जमा कर दिया गया है। खाते में अब बाकी उधार ₹{new_bal:,.2f} है।"
                             else:
                                 spoken_msg = f"{resolved_cust['name']} से ₹{tx['amount']:,.2f} प्राप्त हुए। पूरा उधार चुकता हो चुका है, बैलेंस अब ₹0.00 है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"{resolved_cust['name']}ଙ୍କଠାରୁ ₹{tx['amount']:,.2f} ଜମା କରାଗଲା। ବାକି ଉଧାର ଏବେ ₹{new_bal:,.2f} ଅଛି।"
+                        elif lang in ("ta", "ta-latn"):
+                            if new_bal > 0:
+                                spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{tx['amount']:,.2f} பெறப்பட்டது. மீதமுள்ள கடன் பாக்கி ₹{new_bal:,.2f}."
+                            else:
+                                spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{tx['amount']:,.2f} பெறப்பட்டது. அனைத்து கடனும் தீர்க்கப்பட்டது, பாக்கி ₹0.00."
                         elif lang == "hi-latn":
                             spoken_msg = f"{resolved_cust['name']} se ₹{tx['amount']:,.2f} ka payment jama ho gaya hai. Khate me baki udhaar ₹{new_bal:,.2f} hai."
                         else:
@@ -604,8 +788,10 @@ class IntentExecutor:
                         new_bal = float(new_bal_info["balance"]) if new_bal_info and new_bal_info.get("balance") is not None else max(0.0, current_balance - specified_amount)
                         if lang == "hi":
                             spoken_msg = f"{resolved_cust['name']} से ₹{specified_amount:,.2f} का भुगतान जमा कर दिया गया है। खाते में अब बाकी उधार ₹{new_bal:,.2f} है।"
-                        elif lang == "or":
+                        elif lang in ("or", "or-latn"):
                             spoken_msg = f"{resolved_cust['name']}ଙ୍କଠାରୁ ₹{specified_amount:,.2f} ଜମା କରାଗଲା। ବାକି ଉଧାର ଏବେ ₹{new_bal:,.2f} ଅଛି।"
+                        elif lang in ("ta", "ta-latn"):
+                            spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{specified_amount:,.2f} பெறப்பட்டது. மீதமுள்ள கடன் பாக்கி ₹{new_bal:,.2f}."
                         elif lang == "hi-latn":
                             spoken_msg = f"{resolved_cust['name']} se ₹{specified_amount:,.2f} ka payment jama ho gaya hai. Khate me baki udhaar ₹{new_bal:,.2f} hai."
                         else:
@@ -717,6 +903,12 @@ class IntentExecutor:
                     return ExecutionResult(success=True, action=action, result=found, message="Customer found.", original_text=orig_text)
 
             elif intent == "product_management":
+                items_list = params.get("items") or entities.get("items")
+                if action in ("batch_add_product", "batch_add_stock") or (isinstance(items_list, list) and len(items_list) > 0):
+                    return IntentExecutor._execute_batch_stock_addition(
+                        shop_id, items_list, action, orig_text, norm_text, norm_meta
+                    )
+
                 if action == "add_product":
                     p_name = params.get("product_name") or entities.get("product")
                     price = params.get("price")
@@ -772,6 +964,12 @@ class IntentExecutor:
                     )
 
             elif intent == "inventory_update":
+                items_list = params.get("items") or entities.get("items")
+                if action in ("batch_add_stock", "batch_add_product") or (isinstance(items_list, list) and len(items_list) > 0):
+                    return IntentExecutor._execute_batch_stock_addition(
+                        shop_id, items_list, action, orig_text, norm_text, norm_meta
+                    )
+
                 p_name = params.get("product_name") or entities.get("product")
                 if not p_name:
                     return ExecutionResult(
@@ -853,7 +1051,15 @@ class IntentExecutor:
                     p_str = f" (₹{float(final_price):,.2f} ke bhav se)"
                 else:
                     p_str = ""
-                spoken_msg = f"{res_prod['name']} ka {qty_change} {u_str} stock me add ho gaya hai{p_str}। Kul stock: {adj['new_quantity']} {u_str}."
+                lang = detect_language(orig_text or norm_text)
+                if lang in ("ta", "ta-latn"):
+                    spoken_msg = f"{res_prod['name']} {qty_change} {u_str} இருப்பில் சேர்க்கப்பட்டது{p_str}. மொத்த இருப்பு: {adj['new_quantity']} {u_str}."
+                elif lang in ("or", "or-latn"):
+                    spoken_msg = f"{res_prod['name']} ର {qty_change} {u_str} ଷ୍ଟକରେ ଯୋଡ଼ାଗଲା{p_str}। ମୋଟ ଷ୍ଟକ: {adj['new_quantity']} {u_str}।"
+                elif lang == "hi":
+                    spoken_msg = f"{res_prod['name']} का {qty_change} {u_str} स्टॉक में जोड़ दिया गया है{p_str}। कुल स्टॉक: {adj['new_quantity']} {u_str}।"
+                else:
+                    spoken_msg = f"{res_prod['name']} ka {qty_change} {u_str} stock me add ho gaya hai{p_str}। Kul stock: {adj['new_quantity']} {u_str}."
                 prod_created_prefix = f"New product '{res_prod['name']}' initialized. " if was_prod_created else ""
                 audit_msg = f"{prod_created_prefix}Stock for '{res_prod['name']}' adjusted by {qty_change}. New quantity: {adj['new_quantity']}."
                 return ExecutionResult(
@@ -871,14 +1077,58 @@ class IntentExecutor:
                 if action == "check_stock":
                     p_name = params.get("product_name") or entities.get("product")
                     p_id = None
+                    p_display_name = p_name
                     if p_name:
-                        res_prod = ProductService.resolve_product(shop_id, p_name)
-                        p_id = res_prod["id"]
+                        try:
+                            res_prod = ProductService.resolve_product(shop_id, p_name)
+                            p_id = res_prod["id"]
+                            p_display_name = res_prod.get("name") or p_name
+                        except EntityNotFoundError:
+                            spoken_msg = f"Bhai, '{p_name}' aapke dukaan par nahi hai."
+                            return ExecutionResult(
+                                success=True,
+                                action=action,
+                                result=[],
+                                message=spoken_msg,
+                                spoken_message=spoken_msg,
+                                original_text=orig_text,
+                            )
                     stock_list = InventoryService.get_stock(shop_id, product_id=p_id)
-                    return ExecutionResult(success=True, action=action, result=stock_list, message="Stock retrieved.", original_text=orig_text)
+                    if p_name and stock_list:
+                        curr_qty = stock_list[0].get("quantity") or 0
+                        curr_unit = stock_list[0].get("unit") or "unit"
+                        if float(curr_qty) > 0:
+                            spoken_msg = f"Bhai, aapke dukaan par {p_display_name} ka stock {curr_qty} {curr_unit} uplabdh hai."
+                        else:
+                            spoken_msg = f"Bhai, {p_display_name} aapke dukaan par khatam ho gaya hai (stock 0 hai)."
+                    elif p_name:
+                        spoken_msg = f"Bhai, '{p_name}' aapke dukaan par nahi hai."
+                    else:
+                        spoken_msg = f"Bhai, aapki dukaan me kul {len(stock_list)} products ka stock darj hai."
+                    return ExecutionResult(
+                        success=True,
+                        action=action,
+                        result=stock_list,
+                        message=spoken_msg,
+                        spoken_message=spoken_msg,
+                        original_text=orig_text,
+                    )
                 elif action == "check_low_stock":
                     low_stock = InventoryService.get_low_stock(shop_id)
-                    return ExecutionResult(success=True, action=action, result=low_stock, message="Low stock retrieved.", original_text=orig_text)
+                    count_low = len(low_stock)
+                    if count_low > 0:
+                        names = ", ".join(item.get("name", "Product") for item in low_stock[:5])
+                        spoken_msg = f"Bhai, aapke dukaan par {count_low} items ka stock kam hai: {names}."
+                    else:
+                        spoken_msg = "Bhai, aapke dukaan par sabhi items ka stock theek hai."
+                    return ExecutionResult(
+                        success=True,
+                        action=action,
+                        result=low_stock,
+                        message=spoken_msg,
+                        spoken_message=spoken_msg,
+                        original_text=orig_text,
+                    )
 
             elif intent == "history_query":
                 cust_name = params.get("customer_name") or entities.get("customer")
@@ -998,7 +1248,13 @@ class IntentExecutor:
                 original_text=orig_text,
             )
         except EntityNotFoundError as exc:
-            msg = f"{str(exc)}. Kripya pehle use add karein ya naam jaanchein."
+            err_msg = str(exc)
+            err_msg = re.sub(r'(?:in|for|from)?\s*shop\s*(?:id)?\s*[:=]?\s*\d+', 'aapke dukaan par', err_msg, flags=re.IGNORECASE)
+            err_msg = re.sub(r'shop_id\s*[:=]?\s*\d+', '', err_msg, flags=re.IGNORECASE).strip()
+            if "aapke dukaan" in err_msg or "aapki dukaan" in err_msg:
+                msg = f"Bhai, {err_msg}."
+            else:
+                msg = f"Bhai, '{orig_text}' aapke dukaan par nahi hai."
             return ExecutionResult(
                 success=False,
                 action=action,

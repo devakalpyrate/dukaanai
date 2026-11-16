@@ -10,9 +10,7 @@ DukaanAI has completely migrated from local MySQL to **Supabase (PostgreSQL Clou
 ---
 
 ## 2. Official Supabase Schema Architecture Diagram
-Below is the complete entity-relationship and relational table architecture exported directly from Supabase for project `tsymnjjhuedkpzsnsouo`:
-
-![DukaanAI Supabase Cloud Schema Architecture](supabase-schema.svg)
+Below is the complete entity-relationship and relational table architecture configured in Supabase for project `tsymnjjhuedkpzsnsouo` (see DDL definitions below):
 
 ---
 
@@ -26,9 +24,9 @@ SUPABASE_KEY=your_supabase_service_role_secret_key
 ```
 
 ### Key Components:
-- **Client Singleton**: Located at `app/database/supabase_client.py` (`get_supabase()`).
-- **Connection Helper**: `app/database/db_connection.py` provides backward compatibility.
-- **Query Modules**: All 11 query modules in `app/queries/*.py` use Supabase API methods directly (`select`, `insert`, `update`, `delete`, `upsert`, `ilike`, `order`, `limit`).
+- **Client Singleton**: Located at `backend/database/supabase_client.py` (`get_supabase()`).
+- **Connection Helper**: `backend/database/db_connection.py` provides backward compatibility.
+- **Query Modules**: All 11 query modules in `backend/queries/*.py` use Supabase API methods directly (`select`, `insert`, `update`, `delete`, `upsert`, `ilike`, `order`, `limit`).
 
 ---
 
