@@ -7,19 +7,236 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs9"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs9">
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs10"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs10">
     <style id="dukaan-windows-notification-style">
-      @keyframes dukaanToastSlideIn {
-        from {
+      #dukaan-windows-toast-container {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 99999999;
+        display: flex;
+        flex-direction: column-reverse;
+        gap: 12px;
+        pointer-events: none;
+        max-width: calc(100vw - 32px);
+        width: 380px;
+      }
+
+      .win11-toast {
+        pointer-events: auto;
+        user-select: none;
+        position: relative;
+        overflow: hidden;
+        background: rgba(24, 27, 33, 0.95);
+        backdrop-filter: blur(28px) saturate(180%);
+        -webkit-backdrop-filter: blur(28px) saturate(180%);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 14px;
+        box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.7), 0 2px 8px rgba(0, 0, 0, 0.4);
+        padding: 12px 14px 12px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        color: #FFFFFF;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        animation: winToastSlideIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        box-sizing: border-box;
+      }
+
+      .win11-toast.win-toast-dismissing {
+        animation: winToastSlideOut 0.28s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+      }
+
+      @keyframes winToastSlideIn {
+        0% {
           opacity: 0;
-          transform: translateY(24px) scale(0.96);
+          transform: translateX(115%) scale(0.95);
         }
-        to {
+        65% {
           opacity: 1;
-          transform: translateY(0) scale(1);
+          transform: translateX(-10px) scale(1.02);
+        }
+        85% {
+          transform: translateX(4px) scale(0.995);
+        }
+        100% {
+          opacity: 1;
+          transform: translateX(0) scale(1);
         }
       }
+
+      @keyframes winToastSlideOut {
+        0% {
+          opacity: 1;
+          transform: translateX(0) scale(1);
+          max-height: 160px;
+          margin-bottom: 12px;
+        }
+        100% {
+          opacity: 0;
+          transform: translateX(120%) scale(0.92);
+          max-height: 0;
+          margin-bottom: 0;
+          padding-top: 0;
+          padding-bottom: 0;
+        }
+      }
+
+      .win11-toast-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding-bottom: 7px;
+      }
+
+      .win11-header-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .win11-app-badge {
+        width: 15px;
+        height: 15px;
+        border-radius: 4px;
+        background: #FFD026;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 900;
+        color: #000000;
+        line-height: 1;
+      }
+
+      .win11-app-name {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        color: #E2E8F0;
+      }
+
+      .win11-dot {
+        font-size: 10px;
+        color: #64748B;
+      }
+
+      .win11-header-tag {
+        font-size: 10px;
+        font-weight: 500;
+        color: #94A3B8;
+      }
+
+      .win11-close-btn {
+        background: transparent;
+        border: none;
+        color: #94A3B8;
+        font-size: 12px;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+
+      .win11-close-btn:hover {
+        background: rgba(255, 255, 255, 0.12);
+        color: #FFFFFF;
+      }
+
+      .win11-toast-body {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding-top: 2px;
+      }
+
+      .win11-status-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .win11-status-icon svg {
+        width: 16px;
+        height: 16px;
+      }
+
+      .win11-icon-success {
+        background: rgba(16, 185, 129, 0.18);
+        border: 1px solid rgba(16, 185, 129, 0.35);
+        color: #34D399;
+      }
+
+      .win11-icon-error {
+        background: rgba(244, 63, 94, 0.18);
+        border: 1px solid rgba(244, 63, 94, 0.35);
+        color: #FB7185;
+      }
+
+      .win11-icon-warning {
+        background: rgba(245, 158, 11, 0.18);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        color: #FBBF24;
+      }
+
+      .win11-icon-info {
+        background: rgba(14, 165, 233, 0.18);
+        border: 1px solid rgba(14, 165, 233, 0.35);
+        color: #38BDF8;
+      }
+
+      .win11-text-block {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .win11-title {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: -0.1px;
+        color: #FFFFFF;
+        line-height: 1.3;
+      }
+
+      .win11-desc {
+        font-size: 11px;
+        font-weight: 400;
+        color: #CBD5E1;
+        line-height: 1.4;
+        margin-top: 2px;
+        word-break: break-word;
+      }
+
+      .win11-progress-track {
+        width: 100%;
+        height: 2.5px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 9999px;
+        overflow: hidden;
+        margin-top: 2px;
+      }
+
+      .win11-progress-bar {
+        height: 100%;
+        border-radius: 9999px;
+        transform-origin: left;
+        width: 100%;
+      }
+
+      .win11-progress-success { background: #10B981; }
+      .win11-progress-error   { background: #F43F5E; }
+      .win11-progress-warning { background: #F59E0B; }
+      .win11-progress-info    { background: #0EA5E9; }
     </style>
     <style id="dukaan-spectrum-black-silver">
       svg[viewBox="0 0 320 24"] line {
@@ -216,6 +433,210 @@ body.is-scrolling * {
     }
 
     requestAnimationFrame(animateSpectrum);
+  })();
+</script>
+
+<div id="dukaan-windows-toast-container" class="dukaan-toast-container" aria-live="polite"></div>
+
+<script id="dukaan-windows-toast-engine">
+  (function() {
+    var container = document.getElementById('dukaan-windows-toast-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'dukaan-windows-toast-container';
+      document.body.appendChild(container);
+    }
+
+    var ICONS = {
+      success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+      error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+      info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+    };
+
+    var recentMessages = new Map();
+
+    window.showDukaanNotification = function(opts) {
+      if (!opts) return;
+      var title = opts.title || (opts.type === 'error' ? 'Error' : 'Notification');
+      var message = opts.message || opts.text || '';
+      var type = (opts.type && ICONS[opts.type]) ? opts.type : 'success';
+      var duration = typeof opts.duration === 'number' ? opts.duration : 4000;
+
+      if (!message && !title) return;
+
+      var dedupeKey = title + '::' + message;
+      var now = Date.now();
+      if (recentMessages.has(dedupeKey) && (now - recentMessages.get(dedupeKey) < 1500)) {
+        return;
+      }
+      recentMessages.set(dedupeKey, now);
+
+      var toast = document.createElement('div');
+      toast.className = 'win11-toast';
+      toast.setAttribute('role', 'alert');
+
+      var iconSvg = ICONS[type] || ICONS.success;
+      var progressClass = 'win11-progress-' + type;
+
+      toast.innerHTML = 
+        '<div class="win11-toast-header">' +
+          '<div class="win11-header-left">' +
+            '<div class="win11-app-badge">D</div>' +
+            '<span class="win11-app-name">DukaanAI</span>' +
+            '<span class="win11-dot">•</span>' +
+            '<span class="win11-header-tag">Just now</span>' +
+          '</div>' +
+          '<button type="button" class="win11-close-btn" aria-label="Dismiss Notification" title="Dismiss">✕</button>' +
+        '</div>' +
+        '<div class="win11-toast-body">' +
+          '<div class="win11-status-icon win11-icon-' + type + '">' + iconSvg + '</div>' +
+          '<div class="win11-text-block">' +
+            '<div class="win11-title">' + title + '</div>' +
+            '<div class="win11-desc">' + message + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="win11-progress-track">' +
+          '<div class="win11-progress-bar ' + progressClass + '"></div>' +
+        '</div>';
+
+      var progressBar = toast.querySelector('.win11-progress-bar');
+      var closeBtn = toast.querySelector('.win11-close-btn');
+
+      var remaining = duration;
+      var start = Date.now();
+      var timerId = null;
+      var isDismissing = false;
+
+      function dismiss() {
+        if (isDismissing) return;
+        isDismissing = true;
+        if (timerId) clearTimeout(timerId);
+        toast.classList.add('win-toast-dismissing');
+        setTimeout(function() {
+          if (toast.parentNode) {
+            toast.parentNode.removeChild(toast);
+          }
+        }, 280);
+      }
+
+      function startCountdown() {
+        start = Date.now();
+        if (progressBar) {
+          progressBar.style.transition = 'width ' + remaining + 'ms linear';
+          progressBar.style.width = '0%';
+        }
+        timerId = setTimeout(dismiss, remaining);
+      }
+
+      function pauseCountdown() {
+        if (timerId) clearTimeout(timerId);
+        if (progressBar) {
+          var elapsed = Date.now() - start;
+          remaining = Math.max(200, remaining - elapsed);
+          var currentPercent = (remaining / duration) * 100;
+          progressBar.style.transition = 'none';
+          progressBar.style.width = currentPercent + '%';
+        }
+      }
+
+      closeBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dismiss();
+      });
+
+      toast.addEventListener('mouseenter', pauseCountdown);
+      toast.addEventListener('mouseleave', function() {
+        if (!isDismissing) startCountdown();
+      });
+
+      container.appendChild(toast);
+      while (container.children.length > 4) {
+        container.removeChild(container.firstChild);
+      }
+
+      setTimeout(function() {
+        if (!isDismissing) startCountdown();
+      }, 30);
+    };
+
+    window.addEventListener('dukaan:notify', function(e) {
+      if (e && e.detail) {
+        window.showDukaanNotification(e.detail);
+      }
+    });
+
+    window.addEventListener('dukaanai:data_updated', function(e) {
+      if (e && e.detail) {
+        var d = e.detail;
+        var msg = d.message || d.spoken_message || '';
+        if (msg && !d.clarification_needed) {
+          window.showDukaanNotification({
+            title: 'DukaanAI Action',
+            message: msg,
+            type: 'success'
+          });
+        }
+      }
+    });
+
+    var bannerObserver = new MutationObserver(function(mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var m = mutations[i];
+        if (m.addedNodes) {
+          for (var j = 0; j < m.addedNodes.length; j++) {
+            var node = m.addedNodes[j];
+            if (node.nodeType === 1) {
+              checkAndUpgradeBanner(node);
+              var matches = node.querySelectorAll ? node.querySelectorAll('[class*="bg-emerald"], [class*="bg-rose"], [class*="bg-amber"]') : [];
+              for (var k = 0; k < matches.length; k++) {
+                checkAndUpgradeBanner(matches[k]);
+              }
+            }
+          }
+        }
+      }
+    });
+
+    function checkAndUpgradeBanner(el) {
+      if (!el || !el.className || typeof el.className !== 'string') return;
+      if (el.closest && (el.closest('#dukaan-windows-toast-container') || el.closest('.win11-toast'))) return;
+      
+      var isWarning = cls.indexOf('amber') !== -1 || cls.indexOf('yellow') !== -1;
+      var isErr = cls.indexOf('rose') !== -1 || cls.indexOf('red') !== -1;
+      var isSuccess = cls.indexOf('emerald') !== -1 || cls.indexOf('green') !== -1;
+      var isAlertBanner = (isSuccess || isErr || isWarning) && (
+        cls.indexOf('rounded-xl') !== -1 || cls.indexOf('rounded-2xl') !== -1 || cls.indexOf('rounded-lg') !== -1 || cls.indexOf('p-3') !== -1 || cls.indexOf('p-2') !== -1
+      );
+
+      if (isAlertBanner && !el.dataset.winUpgraded) {
+        var text = (el.innerText || el.textContent || '').trim();
+        if (text && text.length > 2 && text.length < 300) {
+          if (el.tagName !== 'BUTTON' && !el.querySelector('table') && !el.querySelector('input') && !el.querySelector('form')) {
+            el.dataset.winUpgraded = 'true';
+            var type = isErr ? 'error' : (isWarning ? 'warning' : 'success');
+            var isSettings = text.toLowerCase().indexOf('setting') !== -1;
+            var title = isSettings ? (isErr ? 'Settings Error' : 'Settings Saved') : (isErr ? 'Error' : (isWarning ? 'Notice' : 'Success'));
+            
+            el.style.display = 'none';
+
+            window.showDukaanNotification({
+              title: title,
+              message: text,
+              type: type
+            });
+          }
+        }
+      }
+    }
+
+    if (document.body) {
+      bannerObserver.observe(document.body, { childList: true, subtree: true });
+    } else {
+      window.addEventListener('DOMContentLoaded', function() {
+        bannerObserver.observe(document.body, { childList: true, subtree: true });
+      });
+    }
   })();
 </script>
 
