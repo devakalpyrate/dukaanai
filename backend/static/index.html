@@ -7,8 +7,20 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css">
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs4"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs4">
+    <style id="dukaan-spectrum-black-silver">
+      svg[viewBox="0 0 320 24"] line {
+        stroke-linecap: round !important;
+        stroke-width: 2.8px !important;
+      }
+      svg[viewBox="0 0 320 24"] line:nth-child(even) {
+        stroke: #000000 !important;
+      }
+      svg[viewBox="0 0 320 24"] line:nth-child(odd) {
+        stroke: #64748B !important;
+      }
+    </style>
       <style id="dukaan-custom-scrollbar-rules">
 /* DukaanAI Universal Auto-Hiding Branded Scrollbar */
 * {
@@ -118,6 +130,29 @@ body.is-scrolling * {
     window.addEventListener('scroll', handleScrollEvent, { capture: true, passive: true });
     window.addEventListener('wheel', handleScrollEvent, { capture: true, passive: true });
     window.addEventListener('touchmove', handleScrollEvent, { capture: true, passive: true });
+  })();
+</script>
+
+<script id="dukaan-spectrum-runtime-styler">
+  (function() {
+    function applySpectrum() {
+      var lines = document.querySelectorAll('svg[viewBox="0 0 320 24"] line');
+      if (!lines || lines.length === 0) return;
+      for (var i = 0; i < lines.length; i++) {
+        var c = (i % 2 === 0) ? '#000000' : '#64748B';
+        if (lines[i].getAttribute('stroke') !== c) {
+          lines[i].setAttribute('stroke', c);
+        }
+        lines[i].style.setProperty('stroke', c, 'important');
+        lines[i].style.setProperty('stroke-width', '2.8px', 'important');
+        lines[i].style.setProperty('stroke-linecap', 'round', 'important');
+      }
+    }
+    var obs = new MutationObserver(applySpectrum);
+    obs.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['y1', 'y2', 'stroke'] });
+    window.addEventListener('DOMContentLoaded', applySpectrum);
+    window.addEventListener('load', applySpectrum);
+    setInterval(applySpectrum, 80);
   })();
 </script>
 
