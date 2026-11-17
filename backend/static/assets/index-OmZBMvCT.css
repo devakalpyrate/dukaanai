@@ -137,4 +137,5 @@ body.is-scrolling * {
 .dukaan-bar-4 { animation: dukaanSpectrum4 0.6s ease-in-out infinite; }
 .dukaan-bar-5 { animation: dukaanSpectrum5 0.9s ease-in-out infinite; }
 
-svg line[stroke="#E11D48"]{stroke:#e11d48 !important;}
+svg line[stroke="#000000"]{stroke:#000000 !important;}
+svg line[stroke="#64748B"]{stroke:#64748b !important;}
