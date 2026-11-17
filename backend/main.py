@@ -989,15 +989,11 @@ async def transcribe_audio_endpoint(
                     detail=f"Audio duration of {round(dur, 1)}s exceeds limit of {int(MAX_AUDIO_DURATION_SEC)}s.",
                 )
 
-            shop_lang = None
-            try:
-                from backend.queries.settings import get_settings_by_shop_id
-                shop_settings = get_settings_by_shop_id(current_shop["id"])
-                if shop_settings and shop_settings.get("language"):
-                    shop_lang = shop_settings.get("language")
-            except Exception:
-                pass
-            effective_lang = (language or shop_lang or "hi").strip().lower()
+            req_lang = (language or "").strip().lower()
+            if req_lang in ("auto", "all", "", "null", "undefined"):
+                effective_lang = None
+            else:
+                effective_lang = req_lang
 
             result = transcribe_audio(target_path, language=effective_lang)
             if target_path != temp_path and target_path.exists():

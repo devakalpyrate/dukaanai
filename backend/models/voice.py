@@ -84,7 +84,7 @@ def is_hallucinated_text(text: str) -> bool:
         return True
     return False
 
-def transcribe_audio(audio_path: str | Path, language: str = "hi") -> TranscriptionResult:
+def transcribe_audio(audio_path: str | Path, language: str = None) -> TranscriptionResult:
     path = Path(audio_path)
     if not path.is_file():
         raise FileNotFoundError(f"Audio file not found: {path.resolve()}")
@@ -118,6 +118,7 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
         raise RuntimeError(error_msg)
 
     lang_code = (language or "auto").strip().lower()
+    target_lang = None
     if lang_code in ("tamil", "ta", "tam"):
         target_lang = "ta"
     elif lang_code in ("odia", "or", "od"):
@@ -135,7 +136,7 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
     elif lang_code in ("hindi", "hi"):
         target_lang = "hi"
     elif lang_code in ("auto", "all", ""):
-        target_lang = "auto"
+        target_lang = None
     else:
         target_lang = lang_code
 
@@ -143,12 +144,16 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
     start_time = time.perf_counter()
 
     try:
+        data_payload: dict[str, Any] = {"model": "indic-transcribe", "vad": True}
+        if target_lang and target_lang not in ("auto", "all", ""):
+            data_payload["language"] = target_lang
+
         with open(path, "rb") as f:
             resp = requests.post(
                 stt_url,
                 headers={"Authorization": f"Bearer {bodhan_api_key}"},
                 files={"file": f},
-                data={"model": "indic-transcribe", "language": target_lang, "vad": True},
+                data=data_payload,
                 timeout=30,
             )
 
