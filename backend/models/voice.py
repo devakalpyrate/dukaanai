@@ -72,7 +72,6 @@ def is_audio_silent(path: Path) -> bool:
         if len(data) == 0:
             return True
         rms = float(np.sqrt(np.mean(data**2)))
-        # RMS below 0.005 indicates silence or negligible background hiss
         if rms < 0.005:
             logger.info("Audio RMS is %s (below 0.005 silence threshold); skipping cloud STT to save cost.", rms)
             return True
@@ -121,7 +120,6 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
 
     audio_duration = get_audio_duration(path)
 
-    # If audio is too short (< 0.65s, e.g. quick mic on/off tap) or pure silence, skip cloud STT completely to save API cost
     if (audio_duration is not None and audio_duration < 0.65) or is_audio_silent(path):
         logger.info("Silence or short audio tap (< 0.65s) detected in file %s; skipping STT API call to conserve API cost.", path.name)
         return TranscriptionResult(
@@ -132,7 +130,6 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
             device="local-silence-filter",
         )
 
-    # 1. Bodhan AI STT (indic-transcribe)
     bodhan_api_key = (
         os.getenv("BANDHON_AI_STT_API_KEY")
         or os.getenv("BANDHON_AI_STT_KEY")

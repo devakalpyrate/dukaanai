@@ -178,7 +178,6 @@ def send_account_deletion_statement_email(
         msg["From"] = f"{from_name} <{from_email}>"
         msg["To"] = to_email
 
-        # Build table rows for HTML
         table_rows_html = ""
         plain_tx_lines = []
         for idx, tx in enumerate(transactions, start=1):

@@ -314,10 +314,10 @@ def get_current_shop(
         )
     
     shop = shop_queries.get_shop_by_id(shop_id)
-    if not shop or str(shop["owner_id"]) != str(user_id):
+    if not shop or str(shop.get("owner_id")) != str(user_id):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Unauthorized shop access.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired or account no longer exists. Please log in again.",
         )
     
     return {
@@ -501,8 +501,8 @@ def login_endpoint(request: Request, payload: LoginPayload):
     user = user_queries.get_user_credentials_by_email_or_phone(raw_identifier)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unable to log in. Check your credentials and try again.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="First register yourself",
         )
     
     if payload.password:
@@ -605,6 +605,11 @@ def get_current_user_profile(
 ):
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     user = user_queries.get_user_by_id(current_shop["user_id"])
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account has been deleted or no longer exists. Please register first.",
+        )
     shop = shop_queries.get_shop_by_id(current_shop["shop_id"]) or {}
     st = settings_queries.get_settings_by_shop(current_shop["shop_id"]) or {}
     return {
@@ -769,7 +774,6 @@ async def delete_account_endpoint(
     user_id = int(current_shop["user_id"])
     shop_id = int(current_shop["shop_id"])
 
-    # 1. Fetch user and shop details
     user = user_queries.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
@@ -779,11 +783,9 @@ async def delete_account_endpoint(
 
     shop = shop_queries.get_shop_by_id(shop_id) or {"shop_name": current_shop.get("shop_name", "Meri Dukaan")}
 
-    # 2. Collect all transactions and financial summary for the shop
     transactions = transaction_queries.get_transactions_by_shop(shop_id)
     financial_summary = transaction_queries.get_shop_financial_summary_in_db(shop_id)
 
-    # 3. Generate in-memory PDF statement & dispatch via Email
     user_email = user.get("email") or current_shop.get("email")
     owner_name = user.get("name") or "Shop Owner"
     shop_name = shop.get("shop_name") or current_shop.get("shop_name") or "Your Store"
@@ -815,7 +817,6 @@ async def delete_account_endpoint(
         except Exception as mail_err:
             logger.error("Failed to send account deletion statement email: %s", mail_err)
 
-    # 4. Permanently delete user from Supabase (CASCADE deletes shop, customers, txs, inventory, etc.)
     success = user_queries.delete_user(user_id)
     if not success:
         raise HTTPException(

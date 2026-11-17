@@ -20,7 +20,6 @@ def sanitize_tts_text(text: str, lang: str = None) -> str:
     if not text:
         return ""
     
-    # Identify target language for currency pronunciation
     det = lang or detect_language(text)
     if det in ("ta", "ta-latn") or any(0x0B80 <= ord(c) <= 0x0BFF for c in text):
         curr_word = "ரூபாய்"
@@ -29,16 +28,11 @@ def sanitize_tts_text(text: str, lang: str = None) -> str:
     else:
         curr_word = "रुपये"
 
-    # Convert currency symbols to spoken native words
     cleaned = re.sub(r'₹\s*(\d+(?:\.\d+)?)', rf'\1 {curr_word}', text)
     cleaned = re.sub(r'Rs\.?\s*(\d+(?:\.\d+)?)', rf'\1 {curr_word}', cleaned, flags=re.IGNORECASE)
-    # Remove markdown formatting characters
     cleaned = re.sub(r'[*_`#~]', '', cleaned)
-    # Remove technical terms or symbols
     cleaned = cleaned.replace("::", " ").replace("->", " ")
-    # Normalize multiple whitespace
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    # Truncate gracefully if longer than 280 characters
     if len(cleaned) > 280:
         cut = cleaned[:280]
         last_punct = max(cut.rfind('.'), cut.rfind('।'), cut.rfind('?'), cut.rfind('!'))

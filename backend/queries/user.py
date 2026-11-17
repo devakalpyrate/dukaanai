@@ -27,34 +27,60 @@ def get_user_by_id(user_id: int) -> dict[str, Any] | None:
 
 def get_user_by_email(email: str) -> dict[str, Any] | None:
     client = get_supabase()
-    res = client.table("users").select("id, name, email, phone").eq("email", email).limit(1).execute()
+    clean = (email or "").strip().lower()
+    res = client.table("users").select("id, name, email, phone").ilike("email", clean).limit(1).execute()
     return res.data[0] if res.data else None
 
 def get_user_by_phone(phone: str) -> dict[str, Any] | None:
     client = get_supabase()
-    res = client.table("users").select("id, name, email, phone").eq("phone", phone).limit(1).execute()
-    return res.data[0] if res.data else None
+    raw = (phone or "").strip()
+    res = client.table("users").select("id, name, email, phone").eq("phone", raw).limit(1).execute()
+    if res.data:
+        return res.data[0]
+    digits = "".join(c for c in raw if c.isdigit())
+    if len(digits) >= 10:
+        res_like = client.table("users").select("id, name, email, phone").ilike("phone", f"%{digits[-10:]}").limit(1).execute()
+        if res_like.data:
+            return res_like.data[0]
+    return None
 
 def get_user_credentials_by_email(email: str) -> dict[str, Any] | None:
     client = get_supabase()
-    res = client.table("users").select("id, name, email, password, phone").eq("email", email).limit(1).execute()
+    clean = (email or "").strip().lower()
+    res = client.table("users").select("id, name, email, password, phone").ilike("email", clean).limit(1).execute()
     return res.data[0] if res.data else None
 
 def get_user_credentials_by_email_or_phone(identifier: str) -> dict[str, Any] | None:
     raw = (identifier or "").strip()
+    if not raw:
+        return None
     client = get_supabase()
-    res = client.table("users").select("id, name, email, password, phone").eq("email", raw).limit(1).execute()
-    if res.data:
-        return res.data[0]
-    res_phone = client.table("users").select("id, name, email, password, phone").eq("phone", raw).limit(1).execute()
-    if res_phone.data:
-        return res_phone.data[0]
+    clean_email = raw.lower()
+    
+    try:
+        res = client.table("users").select("id, name, email, password, phone").ilike("email", clean_email).limit(1).execute()
+        if res.data:
+            return res.data[0]
+    except Exception:
+        pass
+    
+    try:
+        res_phone = client.table("users").select("id, name, email, password, phone").eq("phone", raw).limit(1).execute()
+        if res_phone.data:
+            return res_phone.data[0]
+    except Exception:
+        pass
+        
     digits = "".join(c for c in raw if c.isdigit())
     if len(digits) >= 10:
         last10 = digits[-10:]
-        res_like = client.table("users").select("id, name, email, password, phone").ilike("phone", f"%{last10}").limit(1).execute()
-        if res_like.data:
-            return res_like.data[0]
+        try:
+            res_like = client.table("users").select("id, name, email, password, phone").ilike("phone", f"%{last10}").limit(1).execute()
+            if res_like.data:
+                return res_like.data[0]
+        except Exception:
+            pass
+            
     return None
 
 def get_all_users() -> list[dict[str, Any]]:

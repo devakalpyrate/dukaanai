@@ -316,7 +316,6 @@ def generate_final_shop_statement_pdf(
     outstanding = float(summary_info.get("total_debt") or summary_info.get("outstanding_debt") or 0.0)
     tx_count = len(transactions)
 
-    # 1. Header
     header_data = [
         [
             Paragraph(f"<b>{shop_name}</b>", title_style),
@@ -341,7 +340,6 @@ def generate_final_shop_statement_pdf(
     story.append(Spacer(1, 8))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#E4E4E7"), spaceBefore=1, spaceAfter=8))
 
-    # 2. Summary Box
     summary_box_data = [
         [
             Paragraph("<b>TOTAL TRANSACTIONS</b>", section_title),
@@ -371,7 +369,6 @@ def generate_final_shop_statement_pdf(
     story.append(summary_table)
     story.append(Spacer(1, 10))
 
-    # 3. Transactions Table
     story.append(Paragraph("<b>COMPLETE TRANSACTION LEDGER</b>", section_title))
     story.append(Spacer(1, 4))
 

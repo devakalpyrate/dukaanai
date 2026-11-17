@@ -28,7 +28,6 @@ def detect_language(text: str) -> str:
 
     tokens = set(re.findall(r"[a-zA-Z]+", cleaned.lower()))
 
-    # Romanized Tamil (Tanglish)
     tamil_markers = {
         "kadan", "roobai", "rubai", "panam", "kudutha", "kuduthar", "kuduthaar",
         "evvalavu", "baakki", "bakki", "kadai", "seru", "seluthu", "vasool",
@@ -37,7 +36,6 @@ def detect_language(text: str) -> str:
     if tokens.intersection(tamil_markers):
         return "ta-latn"
 
-    # Romanized Odia
     odia_markers = {
         "udhara", "tanka", "khatare", "dele", "dela", "jama", "dokan", "dokana",
         "baki", "kete", "achhi", "lekh"
@@ -45,7 +43,6 @@ def detect_language(text: str) -> str:
     if tokens.intersection(odia_markers):
         return "or-latn"
 
-    # Hinglish
     hinglish_markers = {
         "udhar", "udhaar", "jama", "likho", "likh", "rupaye", "rupay", "rupya",
         "ka", "ki", "ke", "ko", "ne", "se", "paise", "paisa", "bhai", "ji", "aaj", "kitna",

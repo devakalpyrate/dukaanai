@@ -124,3 +124,17 @@ body.is-scrolling * {
   transition: right 0.32s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s ease !important;
   will-change: right;
 }
+
+@keyframes dukaanSpectrum1 { 0%, 100% { height: 4px; } 50% { height: 16px; } }
+@keyframes dukaanSpectrum2 { 0%, 100% { height: 14px; } 50% { height: 6px; } }
+@keyframes dukaanSpectrum3 { 0%, 100% { height: 6px; } 50% { height: 18px; } }
+@keyframes dukaanSpectrum4 { 0%, 100% { height: 16px; } 50% { height: 8px; } }
+@keyframes dukaanSpectrum5 { 0%, 100% { height: 8px; } 50% { height: 14px; } }
+
+.dukaan-bar-1 { animation: dukaanSpectrum1 0.7s ease-in-out infinite; }
+.dukaan-bar-2 { animation: dukaanSpectrum2 0.5s ease-in-out infinite; }
+.dukaan-bar-3 { animation: dukaanSpectrum3 0.8s ease-in-out infinite; }
+.dukaan-bar-4 { animation: dukaanSpectrum4 0.6s ease-in-out infinite; }
+.dukaan-bar-5 { animation: dukaanSpectrum5 0.9s ease-in-out infinite; }
+
+svg line[stroke="#E11D48"]{stroke:#e11d48 !important;}
