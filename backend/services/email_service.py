@@ -48,44 +48,29 @@ def send_otp_email(to_email: str, otp_code: str, recipient_name: str = "Shop Own
     try:
         clean_code = str(otp_code).strip()
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"{clean_code} is your DukaanAI verification code"
+        msg["Subject"] = f"Your verification code is: {clean_code}"
         msg["From"] = f"{from_name} <{from_email}>"
         msg["To"] = to_email
 
         plain_text = (
-            f"Hello {recipient_name},\n\n"
             f"Your verification code is: {clean_code}\n\n"
+            f"Code requested:\n{clean_code}\n\n"
             "This code expires in 5 minutes. If you did not request this, please ignore this email.\n\n"
-            "Best regards,\n"
-            "DukaanAI Team"
+            "DukaanAI Support"
         )
 
         html_content = f"""<!DOCTYPE html>
 <html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #202124; line-height: 1.5; margin: 0; padding: 24px; background-color: #f8fafc;">
-  <div style="max-width: 440px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 28px 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-    <div style="font-size: 18px; font-weight: 800; color: #0f172a; margin-bottom: 20px;">
-      Dukaan<span style="color: #f59e0b;">AI</span>
-    </div>
-    <p style="font-size: 15px; color: #334155; margin: 0 0 12px 0;">
-      Your verification code is:
-    </p>
-    <div style="background-color: #f1f5f9; border-radius: 8px; padding: 16px 20px; margin: 16px 0; text-align: center;">
-      <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #0f172a; user-select: all; -webkit-user-select: all; display: inline-block;">
-        {clean_code}
-      </span>
-    </div>
-    <p style="font-size: 13px; color: #64748b; margin: 16px 0 8px 0;">
-      This code expires in 5 minutes. Please do not share it with anyone.
-    </p>
-    <p style="font-size: 12px; color: #94a3b8; margin: 0;">
-      If you did not request this, you can safely ignore this email.
-    </p>
-  </div>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #202124; line-height: 1.5; margin: 0; padding: 24px;">
+  <p style="font-size: 16px; margin: 0 0 12px 0; color: #202124;">
+    Your verification code is:
+  </p>
+  <p style="font-size: 32px; font-weight: bold; letter-spacing: 4px; margin: 16px 0; font-family: monospace; color: #111827; user-select: all; -webkit-user-select: all;">
+    {clean_code}
+  </p>
+  <p style="font-size: 14px; color: #5f6368; margin: 16px 0 0 0;">
+    This code expires in 5 minutes. If you did not request this, please ignore this email.
+  </p>
 </body>
 </html>"""
 

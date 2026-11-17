@@ -7,7 +7,7 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs12"></script>
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs13"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs11">
     <style id="dukaan-windows-notification-style">
       #dukaan-windows-toast-container {
@@ -660,11 +660,91 @@ body.is-scrolling * {
       }
     }
 
+    function setNativeValue(element, value) {
+      try {
+        var valueSetter = Object.getOwnPropertyDescriptor(element, 'value')?.set;
+        var prototype = Object.getPrototypeOf(element);
+        var prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+        if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+          prototypeValueSetter.call(element, value);
+        } else if (valueSetter) {
+          valueSetter.call(element, value);
+        } else {
+          element.value = value;
+        }
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+      } catch (err) {
+        element.value = value;
+      }
+    }
+
+    function checkOtpInputs() {
+      var otpInputs = document.querySelectorAll('input[placeholder*="6-digit code"], input[placeholder*="Enter 6-digit"]');
+      for (var i = 0; i < otpInputs.length; i++) {
+        var inp = otpInputs[i];
+        inp.setAttribute('autocomplete', 'one-time-code');
+        if (!inp.dataset.pasteEnhanced) {
+          inp.dataset.pasteEnhanced = 'true';
+          
+          var urlOtp = new URLSearchParams(window.location.search).get('otp');
+          if (urlOtp && urlOtp.replace(/\D/g, '').length === 6) {
+            setNativeValue(inp, urlOtp.replace(/\D/g, '').slice(0, 6));
+          }
+
+          var label = inp.previousElementSibling;
+          if (label && label.tagName === 'LABEL' && !label.querySelector('.otp-paste-btn')) {
+            label.style.display = 'flex';
+            label.style.justifyContent = 'space-between';
+            label.style.alignItems = 'center';
+            var pasteBtn = document.createElement('button');
+            pasteBtn.type = 'button';
+            pasteBtn.className = 'otp-paste-btn';
+            pasteBtn.innerText = '📋 Paste Code';
+            pasteBtn.style.cssText = 'font-size: 11px; font-weight: 700; color: #FFD026; background: rgba(255, 208, 38, 0.12); border: 1px solid rgba(255, 208, 38, 0.35); border-radius: 6px; padding: 2px 8px; cursor: pointer; text-transform: none; letter-spacing: normal; transition: all 0.15s ease;';
+            pasteBtn.onmouseover = function() { this.style.background = 'rgba(255, 208, 38, 0.25)'; };
+            pasteBtn.onmouseout = function() { this.style.background = 'rgba(255, 208, 38, 0.12)'; };
+            pasteBtn.onclick = (function(targetInp) {
+              return function(e) {
+                e.preventDefault();
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                  navigator.clipboard.readText().then(function(clipText) {
+                    var digits = (clipText || '').replace(/\D/g, '').slice(0, 6);
+                    if (digits && digits.length === 6) {
+                      setNativeValue(targetInp, digits);
+                      window.showDukaanNotification && window.showDukaanNotification({
+                        title: 'Code Pasted',
+                        message: 'Filled verification code ' + digits,
+                        type: 'success'
+                      });
+                    } else {
+                      window.showDukaanNotification && window.showDukaanNotification({
+                        title: 'Clipboard',
+                        message: 'No 6-digit code found in clipboard.',
+                        type: 'warning'
+                      });
+                    }
+                  }).catch(function() {
+                    targetInp.focus();
+                  });
+                } else {
+                  targetInp.focus();
+                }
+              };
+            })(inp);
+            label.appendChild(pasteBtn);
+          }
+        }
+      }
+    }
+
     if (document.body) {
       bannerObserver.observe(document.body, { childList: true, subtree: true });
+      setInterval(checkOtpInputs, 500);
     } else {
       window.addEventListener('DOMContentLoaded', function() {
         bannerObserver.observe(document.body, { childList: true, subtree: true });
+        setInterval(checkOtpInputs, 500);
       });
     }
   })();
