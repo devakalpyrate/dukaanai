@@ -46,14 +46,20 @@ def send_otp_email(to_email: str, otp_code: str, recipient_name: str = "Shop Own
         return True
 
     try:
+        digits_html = "".join([
+            f'<td align="center" style="width: 44px; height: 50px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 24px; font-weight: 800; color: #0f172a; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); font-family: monospace;">{c}</td><td style="width: 8px;"></td>'
+            for c in otp_code.strip()
+        ])
+
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"{otp_code} is your DukaanAI verification code"
+        msg["Subject"] = f"Your verification code is: {otp_code}"
         msg["From"] = f"{from_name} <{from_email}>"
         msg["To"] = to_email
 
         plain_text = (
             f"Hello {recipient_name},\n\n"
-            f"Your DukaanAI verification code is: {otp_code}\n\n"
+            f"Your verification code is: {otp_code}\n\n"
+            f"Code requested:\n{otp_code}\n\n"
             "This code is valid for 5 minutes. Please do not share this code with anyone.\n\n"
             "If you did not request this code, please ignore this email.\n\n"
             "Best regards,\n"
@@ -88,15 +94,29 @@ def send_otp_email(to_email: str, otp_code: str, recipient_name: str = "Shop Own
               <h2 style="margin: 0 0 12px; font-size: 18px; font-weight: 700; color: #FFFFFF;">
                 One-Time Verification Code
               </h2>
-              <p style="margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: #CBD5E1;">
+              <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #CBD5E1;">
                 Hello <strong style="color: #FFFFFF;">{recipient_name}</strong>,<br>
-                Use the following 6-digit verification code to complete your login or registration on DukaanAI:
+                Your verification code is:
               </p>
-              <div style="background-color: #181E29; border: 1px solid rgba(255, 208, 38, 0.35); border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
-                <span style="font-size: 36px; font-weight: 900; letter-spacing: 10px; color: #FFD026; font-family: monospace;">
-                  {otp_code}
-                </span>
-                <p style="margin: 8px 0 0; font-size: 12px; color: #94A3B8;">Valid for 5 minutes only</p>
+              
+              <div style="background-color: #181E29; border: 1px solid rgba(255, 208, 38, 0.35); border-radius: 12px; padding: 20px; margin: 20px 0;">
+                <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: #94A3B8; margin-bottom: 12px;">
+                  Code requested
+                </div>
+                <table border="0" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
+                  <tr>
+                    {digits_html}
+                  </tr>
+                </table>
+                <table border="0" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td align="center" style="border-radius: 20px; background-color: #0b57d0;">
+                      <span style="display: inline-block; padding: 8px 20px; font-size: 13px; font-weight: 700; color: #ffffff; text-decoration: none; user-select: all;">
+                        Copy code
+                      </span>
+                    </td>
+                  </tr>
+                </table>
               </div>
               <p style="margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: #94A3B8;">
                 &#9888; <strong>Security Notice:</strong> Never share this code with anyone, including DukaanAI staff. We will never call or message asking for your code.
