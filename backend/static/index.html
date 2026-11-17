@@ -7,8 +7,8 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs10"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs10">
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs11"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs11">
     <style id="dukaan-windows-notification-style">
       #dukaan-windows-toast-container {
         position: fixed;
@@ -433,6 +433,35 @@ body.is-scrolling * {
     }
 
     requestAnimationFrame(animateSpectrum);
+  })();
+</script>
+
+<script id="dukaan-audio-unlocker">
+  (function() {
+    window.__dukaanUnlockAudio = function() {
+      try {
+        if (!window.__dukaanSharedAudio) {
+          window.__dukaanSharedAudio = new Audio();
+        }
+        if (!window.__dukaanAudioUnlocked) {
+          window.__dukaanSharedAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+          var p = window.__dukaanSharedAudio.play();
+          if (p && typeof p.then === 'function') {
+            p.then(function() {
+              window.__dukaanAudioUnlocked = true;
+            }).catch(function() {});
+          }
+        }
+        if (window.speechSynthesis && window.speechSynthesis.paused) {
+          window.speechSynthesis.resume();
+        }
+      } catch(e) {}
+    };
+
+    window.addEventListener('pointerdown', window.__dukaanUnlockAudio, { capture: true, passive: true });
+    window.addEventListener('touchstart', window.__dukaanUnlockAudio, { capture: true, passive: true });
+    window.addEventListener('click', window.__dukaanUnlockAudio, { capture: true, passive: true });
+    window.addEventListener('keydown', window.__dukaanUnlockAudio, { capture: true, passive: true });
   })();
 </script>
 

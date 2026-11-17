@@ -28,8 +28,11 @@ def sanitize_tts_text(text: str, lang: str = None) -> str:
     else:
         curr_word = "रुपये"
 
-    cleaned = re.sub(r'₹\s*(\d+(?:\.\d+)?)', rf'\1 {curr_word}', text)
-    cleaned = re.sub(r'Rs\.?\s*(\d+(?:\.\d+)?)', rf'\1 {curr_word}', cleaned, flags=re.IGNORECASE)
+    def clean_curr(match):
+        val = match.group(1).replace(",", "")
+        return f"{val} {curr_word}"
+
+    cleaned = re.sub(r'(?:₹|Rs\.?)\s*(\d+(?:,\d+)*(?:\.\d+)?)', clean_curr, text, flags=re.IGNORECASE)
     cleaned = re.sub(r'[*_`#~]', '', cleaned)
     cleaned = cleaned.replace("::", " ").replace("->", " ")
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
@@ -79,7 +82,21 @@ def synthesize_speech(
         or "https://api.bodhan.ai/v1/audio/speech"
     )
 
-    if not lang:
+    if any(0x0B80 <= ord(c) <= 0x0BFF for c in clean_text):
+        target_lang = "ta"
+    elif any(0x0B00 <= ord(c) <= 0x0B7F for c in clean_text):
+        target_lang = "or"
+    elif any(0x0900 <= ord(c) <= 0x097F for c in clean_text):
+        target_lang = "hi"
+    elif lang and lang.strip().lower() not in ("auto", "none", ""):
+        target_lang = lang.strip().lower()
+        if target_lang in ("odia", "or-latn"):
+            target_lang = "or"
+        elif target_lang in ("tamil", "ta-latn"):
+            target_lang = "ta"
+        elif target_lang in ("hindi", "hi-latn"):
+            target_lang = "hi"
+    else:
         det = detect_language(clean_text)
         if det in ("hi", "hi-latn"):
             target_lang = "hi"
@@ -88,16 +105,8 @@ def synthesize_speech(
         elif det in ("ta", "ta-latn"):
             target_lang = "ta"
         elif det in ("en", "pa", "bn", "gu", "mr", "te", "kn", "ml"):
-            target_lang = det
+            target_lang = det.split("-")[0]
         else:
-            target_lang = "hi"
-    else:
-        target_lang = lang.strip().lower()
-        if target_lang in ("odia", "or-latn"):
-            target_lang = "or"
-        elif target_lang in ("tamil", "ta-latn"):
-            target_lang = "ta"
-        elif target_lang in ("hindi", "hi-latn"):
             target_lang = "hi"
 
     headers = {
@@ -132,5 +141,5 @@ def synthesize_speech(
         if attempt < max_retries:
             time.sleep(0.5)
 
-    logger.error("Bodhan TTS failed all attempts for text: '%s'. Generating fallback audio.", clean_text[:50])
-    return generate_fallback_silence_wav(output_path)
+    logger.error("Bodhan TTS failed all attempts for text: '%s'. Raising for fallback.", clean_text[:50])
+    raise RuntimeError(f"Bodhan TTS failed for text: '{clean_text[:50]}'")
