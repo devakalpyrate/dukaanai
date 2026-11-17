@@ -61,35 +61,6 @@ def get_audio_duration(audio_path: str | Path) -> float | None:
         pass
     return None
 
-def is_audio_silent(path: Path) -> bool:
-    """Detect if an audio file contains only silence or very low background noise.
-    Prevents unnecessary cloud STT API calls to save quota and cost.
-    """
-    try:
-        import soundfile as sf
-        import numpy as np
-        data, samplerate = sf.read(str(path))
-        if len(data) == 0:
-            return True
-        rms = float(np.sqrt(np.mean(data**2)))
-        if rms < 0.005:
-            logger.info("Audio RMS is %s (below 0.005 silence threshold); skipping cloud STT to save cost.", rms)
-            return True
-    except Exception:
-        try:
-            with wave.open(str(path), "rb") as wf:
-                import audioop
-                frames = wf.readframes(wf.getnframes())
-                if not frames:
-                    return True
-                rms = audioop.rms(frames, wf.getsampwidth())
-                if rms < 150:
-                    logger.info("Wave audioop RMS is %s (below 150 silence threshold); skipping cloud STT to save cost.", rms)
-                    return True
-        except Exception:
-            pass
-    return False
-
 WHISPER_HALLUCINATIONS = {
     "", ".", "..", "...", "?", "!", "-", "--",
     "null", "undefined", "silence", "[silence]", "[music]", "[applause]",
@@ -99,8 +70,8 @@ WHISPER_HALLUCINATIONS = {
     "ok", "okay", "yes", "no", "so", "k", "yeah",
     "हाँ", "हाँ।", "हां", "हाँ जी", "हाँजी", "हो", "नमस्ते", "हेलो",
     "चलो", "ठीक है", "बाय", "शुक्रिया", "धन्यवाद", "धन्यवाद।", "जी", "जी हाँ", "जी हां",
-    "சரி", "வணக்கம்", "நன்றி", "வணக்கம்.", "ஆமாம்",
-    "ଆଜ୍ଞା", "ଧନ୍ୟବାଦ", "ନମସ୍କାର"
+    "சரி", "வணக்கம்", "நன்றி", "வணக்கம்.", "ஆமாம்", "ம்", "ஹும்",
+    "ଆଜ୍ଞା", "ଧନ୍ୟବାଦ", "ନମସ୍କାର", "ହୁଁ"
 }
 
 def is_hallucinated_text(text: str) -> bool:
@@ -118,16 +89,13 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
     if not path.is_file():
         raise FileNotFoundError(f"Audio file not found: {path.resolve()}")
 
-    audio_duration = get_audio_duration(path)
-
-    if (audio_duration is not None and audio_duration < 0.65) or is_audio_silent(path):
-        logger.info("Silence or short audio tap (< 0.65s) detected in file %s; skipping STT API call to conserve API cost.", path.name)
+    if path.stat().st_size < 100:
         return TranscriptionResult(
             text="",
             inference_time_sec=0.0,
-            audio_duration_sec=round(audio_duration, 2) if audio_duration else None,
+            audio_duration_sec=0.0,
             real_time_factor=0.0,
-            device="local-silence-filter",
+            device="local-empty-filter",
         )
 
     bodhan_api_key = (
@@ -150,10 +118,10 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
         raise RuntimeError(error_msg)
 
     lang_code = (language or "hi").strip().lower()
-    if lang_code in ("odia", "or", "od"):
-        target_lang = "or"
-    elif lang_code in ("tamil", "ta", "tam"):
+    if lang_code in ("tamil", "ta", "tam"):
         target_lang = "ta"
+    elif lang_code in ("odia", "or", "od"):
+        target_lang = "or"
     elif lang_code in ("telugu", "te"):
         target_lang = "te"
     elif lang_code in ("bengali", "bn"):
@@ -169,7 +137,9 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
     else:
         target_lang = lang_code
 
+    audio_duration = get_audio_duration(path)
     start_time = time.perf_counter()
+
     try:
         with open(path, "rb") as f:
             resp = requests.post(
@@ -184,7 +154,7 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
             resp_data = resp.json()
             text = (resp_data.get("text") or "").strip()
             if is_hallucinated_text(text):
-                logger.info("Ignoring Bodhan STT hallucination/silence text: '%s'", text)
+                logger.info("Ignoring Bodhan STT hallucination text: '%s'", text)
                 text = ""
             inf_time = round(time.perf_counter() - start_time, 3)
             rtf = (
