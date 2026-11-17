@@ -7,7 +7,7 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs11"></script>
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs12"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs11">
     <style id="dukaan-windows-notification-style">
       #dukaan-windows-toast-container {
@@ -631,6 +631,7 @@ body.is-scrolling * {
       if (!el || !el.className || typeof el.className !== 'string') return;
       if (el.closest && (el.closest('#dukaan-windows-toast-container') || el.closest('.win11-toast'))) return;
       
+      var cls = el.className || '';
       var isWarning = cls.indexOf('amber') !== -1 || cls.indexOf('yellow') !== -1;
       var isErr = cls.indexOf('rose') !== -1 || cls.indexOf('red') !== -1;
       var isSuccess = cls.indexOf('emerald') !== -1 || cls.indexOf('green') !== -1;
