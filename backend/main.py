@@ -1327,6 +1327,16 @@ def create_product_endpoint(
         logger.error("Failed to create product: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
         raise HTTPException(status_code=400, detail="Unable to add product. Please try again.") from exc
 
+@app.post("/api/inventory/deduplicate")
+def deduplicate_inventory_endpoint(
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    enforce_rate_limit(request, category="execute", user_id=str(current_shop["user_id"]))
+    from backend.services.product_normalizer import merge_duplicate_products
+    res = merge_duplicate_products(int(current_shop["shop_id"]))
+    return {"success": True, "data": res}
+
 @app.get("/api/transactions")
 def get_transactions_endpoint(
     request: Request,

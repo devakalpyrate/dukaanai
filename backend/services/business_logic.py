@@ -142,6 +142,48 @@ class ProductService:
             if any(char.isdigit() for char in clean_unit):
                 raise ValidationError("Unit must contain only characters/letters (e.g. kg, liter, packet), numbers are not allowed.")
 
+        from backend.services.product_normalizer import find_matching_product, canonicalize_unit
+        v_unit = canonicalize_unit(v_unit)
+        all_products = product_queries.get_products_by_shop(shop_id)
+        existing = find_matching_product(v_name, all_products)
+        if existing:
+            p_id = existing["id"]
+            new_price = float(v_price) if v_price > Decimal("0.00") else float(existing.get("price") or 0.0)
+            client = get_supabase()
+            client.table("products").update({
+                "price": new_price,
+                "unit": v_unit or existing.get("unit") or "kg"
+            }).eq("id", p_id).execute()
+
+            inv_res = client.table("inventory").select("id, quantity").eq("product_id", p_id).execute()
+            if inv_res.data:
+                curr_qty = float(inv_res.data[0].get("quantity") or 0.0)
+                updated_qty = curr_qty + float(v_quantity)
+                client.table("inventory").update({
+                    "quantity": updated_qty
+                }).eq("id", inv_res.data[0]["id"]).execute()
+            else:
+                updated_qty = float(v_quantity)
+                inv_id = get_next_id("inventory")
+                client.table("inventory").insert({
+                    "id": inv_id,
+                    "shop_id": shop_id,
+                    "product_id": p_id,
+                    "quantity": updated_qty,
+                    "low_stock_limit": float(v_limit)
+                }).execute()
+
+            return {
+                "id": p_id,
+                "shop_id": shop_id,
+                "name": existing["name"],
+                "price": str(new_price),
+                "unit": v_unit or existing.get("unit") or "kg",
+                "quantity": updated_qty,
+                "stock": updated_qty,
+                "total_value": float(round(Decimal(str(updated_qty)) * Decimal(str(new_price)), 2)),
+            }
+
         v_quantity = validate_decimal(quantity, "quantity", min_value=Decimal("0.00"), allow_zero=True) if quantity is not None else Decimal("0.00")
         v_limit = validate_decimal(low_stock_limit, "low_stock_limit", min_value=Decimal("0.00"), allow_zero=True) if low_stock_limit is not None else Decimal("5.00")
 
@@ -181,14 +223,22 @@ class ProductService:
         q_name = validate_string(product_name, "product_name", max_length=100, required=True)
 
         matches = product_queries.search_products(shop_id, q_name)
+        if matches:
+            exact_matches = [p for p in matches if p["name"].lower() == q_name.lower()]
+            if len(exact_matches) == 1:
+                return exact_matches[0]
+            if len(matches) == 1:
+                return matches[0]
+
+        all_products = product_queries.get_products_by_shop(shop_id)
+        if all_products:
+            from backend.services.product_normalizer import find_matching_product
+            found = find_matching_product(q_name, all_products)
+            if found:
+                return found
+
         if not matches:
             raise EntityNotFoundError(f"Product '{q_name}' aapke dukaan par nahi hai")
-
-        exact_matches = [p for p in matches if p["name"].lower() == q_name.lower()]
-        if len(exact_matches) == 1:
-            return exact_matches[0]
-        if len(matches) == 1:
-            return matches[0]
 
         names = [f"{p['name']} (ID: {p['id']})" for p in matches[:5]]
         raise AmbiguousEntityError(
