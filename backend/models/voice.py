@@ -117,7 +117,7 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
         logger.error(error_msg)
         raise RuntimeError(error_msg)
 
-    lang_code = (language or "hi").strip().lower()
+    lang_code = (language or "auto").strip().lower()
     if lang_code in ("tamil", "ta", "tam"):
         target_lang = "ta"
     elif lang_code in ("odia", "or", "od"):
@@ -132,8 +132,10 @@ def transcribe_audio(audio_path: str | Path, language: str = "hi") -> Transcript
         target_lang = "gu"
     elif lang_code in ("english", "en"):
         target_lang = "en"
-    elif lang_code in ("auto", "hi", "hindi"):
+    elif lang_code in ("hindi", "hi"):
         target_lang = "hi"
+    elif lang_code in ("auto", "all", ""):
+        target_lang = "auto"
     else:
         target_lang = lang_code
 
