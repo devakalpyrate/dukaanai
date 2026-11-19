@@ -1147,18 +1147,48 @@ def understand_intent_endpoint(
                 clarification_question=contract.clarification_question,
                 error_message=None,
             )
-        client = get_grpc_client()
-        result = client.understand_intent(
+        
+        # Try local gRPC if available
+        try:
+            client = get_grpc_client()
+            result = client.understand_intent(
+                text=payload.text,
+                context=payload.context or "",
+                shop_id=verified_shop_id,
+                timeout=5.0,
+            )
+            if result.get("success") and result.get("action") not in ("grpc_error", "service_unavailable", "none"):
+                return UnderstandIntentResponseModel(**result)
+        except Exception as grpc_err:
+            logger.warning("Local gRPC unavailable, falling back to direct LLM pipeline: %s", grpc_err)
+
+        # Resilient fallback to GroqLLMClient with local Kirana intent fallback
+        from backend.models.ai import GroqLLMClient
+        llm = GroqLLMClient()
+        contract = llm.understand_intent(
             text=payload.text,
-            context=payload.context or "",
+            context=payload.context or None,
             shop_id=verified_shop_id,
-            timeout=25.0,
         )
-        return UnderstandIntentResponseModel(**result)
+        return UnderstandIntentResponseModel(
+            success=contract.action not in ("none", "service_unavailable", "parse_error"),
+            intent=contract.intent,
+            action=contract.action,
+            parameters=contract.parameters,
+            entities=contract.entities,
+            original_text=contract.original_text,
+            normalized_text=contract.normalized_text,
+            normalization=contract.normalization,
+            confidence=float(contract.confidence),
+            requires_confirmation=contract.requires_confirmation,
+            clarification_needed=contract.clarification_needed,
+            clarification_question=contract.clarification_question,
+            error_message=None,
+        )
     except Exception as exc:
-        logger.error("Unhandled error calling gRPC client: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        logger.error("Unhandled error in understand_intent_endpoint: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Service temporarily unavailable. Please try again later.",
         ) from exc
 

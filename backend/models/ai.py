@@ -277,6 +277,13 @@ class GroqLLMClient:
                 break
 
         logger.error("Groq API call error: %s", last_exc)
+        
+        # Smart local fallback: resolve common Kirana intents even when Groq is unavailable
+        fallback_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
+        if fallback_res:
+            logger.info("Successfully resolved intent via smart offline Kirana fallback: %s", fallback_res.action)
+            return fallback_res
+
         return CanonicalIntentContract(
             intent="unknown",
             action="service_unavailable",
@@ -284,6 +291,83 @@ class GroqLLMClient:
             clarification_needed=True,
             clarification_question="AI service is momentarily busy. Please repeat your instruction.",
         )
+
+    def _rule_based_fallback(self, text: str, shop_id: Optional[int] = None) -> Optional[CanonicalIntentContract]:
+        raw = (text or "").strip()
+        lower = raw.lower()
+        if not raw:
+            return None
+        
+        # 1. Udhaar / Credit Transaction
+        m_credit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ka|ko|ke|re)?\s*(?:₹|rs\.?|rupaye)?\s*(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye)?\s*(?:ka)?\s*(?:udhaar|udhar|baki|baaki|khat[ae]|likh|likho|de|diya|diye)', lower)
+        if not m_credit:
+            m_credit = re.search(r'(?:udhaar|udhar|baki|baaki|credit)\s+([a-zA-Z\u0900-\u097F]+)\s+(?:ko)?\s*(\d+(?:\.\d+)?)', lower)
+        if not m_credit:
+            m_credit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)\s*(?:udhaar|udhar|credit)', lower)
+        if m_credit:
+            cust = m_credit.group(1).capitalize()
+            amt = float(m_credit.group(2))
+            return CanonicalIntentContract(
+                intent="credit_transaction",
+                action="record_credit",
+                parameters={"customer_name": cust, "amount": amt, "type": "credit", "shop_id": shop_id or 1},
+                entities={"customer": cust, "amount": amt},
+                original_text=raw,
+                normalized_text=raw,
+                confidence=0.95,
+                conversational_response=f"{cust} ke khate me ₹{int(amt) if amt.is_integer() else amt} ka udhaar darj kar diya gaya hai.",
+            )
+
+        # 2. Jama / Debit / Payment Transaction
+        m_debit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ne|se)?\s*(?:₹|rs\.?|rupaye)?\s*(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye)?\s*(?:jama|payment|diye|diya|chuka|aaye|aaya|bheja)', lower)
+        if not m_debit:
+            m_debit = re.search(r'(?:jama|payment|paid)\s+([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)', lower)
+        if not m_debit:
+            m_debit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)\s*(?:jama|payment)', lower)
+        if m_debit:
+            cust = m_debit.group(1).capitalize()
+            amt = float(m_debit.group(2))
+            return CanonicalIntentContract(
+                intent="credit_transaction",
+                action="record_debit",
+                parameters={"customer_name": cust, "amount": amt, "type": "debit", "shop_id": shop_id or 1},
+                entities={"customer": cust, "amount": amt},
+                original_text=raw,
+                normalized_text=raw,
+                confidence=0.95,
+                conversational_response=f"{cust} se ₹{int(amt) if amt.is_integer() else amt} ki payment prapt ho gayi hai.",
+            )
+
+        # 3. Add Customer
+        m_cust = re.search(r'(?:add\s+customer|naya\s+customer|customer\s+banao|customer\s+jodo)\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(\d{10}))?', lower)
+        if not m_cust:
+            m_cust = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ko\s+customer\s+(?:me\s+)?(?:add|banao|jodo))', lower)
+        if m_cust:
+            cust = m_cust.group(1).capitalize()
+            phone = m_cust.group(2) if m_cust.lastindex and m_cust.lastindex >= 2 else ""
+            return CanonicalIntentContract(
+                intent="customer_management",
+                action="add_customer",
+                parameters={"customer_name": cust, "phone": phone or "", "shop_id": shop_id or 1},
+                entities={"customer": cust, "phone": phone or ""},
+                original_text=raw,
+                normalized_text=raw,
+                confidence=0.95,
+                conversational_response=f"Naya customer {cust} safaltapoorvak jod diya gaya hai.",
+            )
+
+        # 4. Greeting / Conversation
+        if any(w in lower for w in ["hello", "namaste", "hi", "hey", "kaise ho", "kya haal"]):
+            return CanonicalIntentContract(
+                intent="conversation",
+                action="greet",
+                original_text=raw,
+                normalized_text=raw,
+                confidence=1.0,
+                conversational_response="Namaste! DukaanAI me aapka swagat hai. Kripya apna instruction bolein, jaise 'Ramesh ka 500 udhaar'.",
+            )
+
+        return None
 
 _default_llm_client: Optional[GroqLLMClient] = None
 

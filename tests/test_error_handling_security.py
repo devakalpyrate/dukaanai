@@ -158,7 +158,7 @@ class TestErrorHandlingSecurity(unittest.TestCase):
     def test_07_groq_bodhan_api_failure_and_timeout(self):
         with patch("app.main.get_grpc_client") as mock_grpc:
             mock_client = MagicMock()
-            mock_client.understand_intent.side_effect = Exception("Groq API connection timeout after 25s with api_key=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")
+            mock_client.understand_intent.side_effect = Exception("Groq API connection timeout after 25s with api_key=gsk_mock_test_groq_key_sample_9999999999999999")
             mock_grpc.return_value = mock_client
 
             headers = {"Authorization": f"Bearer {self.token}"}
@@ -183,7 +183,7 @@ class TestErrorHandlingSecurity(unittest.TestCase):
         headers = {"Authorization": f"Bearer {self.token}"}
         
         with patch("app.main.transcribe_audio") as mock_trans:
-            mock_trans.side_effect = Exception("HuggingFace STT authentication failed for token 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: 401 Client Error")
+            mock_trans.side_effect = Exception("HuggingFace STT authentication failed for token hf_mock_test_hf_token_sample_8888888888888888: 401 Client Error")
             
             fake_wav = b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x44\xac\x00\x00\x88\x58\x01\x00\x02\x00\x10\x00data\x00\x00\x00\x00"
             res = self.client.post(
@@ -276,10 +276,10 @@ class TestErrorHandlingSecurity(unittest.TestCase):
         self.assertNotIn("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", sanitized_str)
         self.assertIn("Bearer [REDACTED]", sanitized_str)
 
-        raw_api_key_str = "Connecting with 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 and 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"
+        raw_api_key_str = "Connecting with gsk_mock_test_groq_key_sample_9999999999999999 and hf_mock_test_hf_token_sample_8888888888888888"
         sanitized_api = redact_sensitive_string(raw_api_key_str)
-        self.assertNotIn("60RUPiBWK35jV70tXeu4WGdyb3FYyG4ozvYiZRcH71WtbqAAcyyG", sanitized_api)
-        self.assertNotIn("ftRemrozYsFrSxSNHVLpxQBWxunKnZAgab", sanitized_api)
+        self.assertNotIn("mock_test_groq_key", sanitized_api)
+        self.assertNotIn("mock_test_hf_token", sanitized_api)
 
         dict_with_secrets = {
             "password": "plain_secret_password",

@@ -74,7 +74,6 @@ def synthesize_speech(
         or os.getenv("BANDHON_AI_TTS_KEY")
         or os.getenv("BANDHON_AI_API_KEY")
         or os.getenv("BODHAN_API_KEY")
-        or "sk-FTpEsbROGh6KAL0SVKg2tg"
     )
 
     tts_url = (
