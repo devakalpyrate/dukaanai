@@ -1,0 +1,75 @@
+/* DukaanAI Universal Auto-Hiding Branded Scrollbar */
+      * {
+        scrollbar-width: thin !important;
+        scrollbar-color: transparent transparent !important;
+        transition: scrollbar-color 0.4s ease-in-out !important;
+      }
+
+      ::-webkit-scrollbar {
+        width: 6px !important;
+        height: 6px !important;
+        background-color: transparent !important;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: transparent !important;
+        border-radius: 9999px !important;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background-color: transparent !important;
+        border-radius: 9999px !important;
+        transition:
+          background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+          box-shadow 0.4s ease !important;
+      }
+
+      /* Show branded golden scrollbar ONLY while actively scrolling */
+      .is-scrolling::-webkit-scrollbar-thumb,
+      .is-scrolling *::-webkit-scrollbar-thumb,
+      html.is-scrolling *::-webkit-scrollbar-thumb,
+      body.is-scrolling *::-webkit-scrollbar-thumb,
+      ::-webkit-scrollbar-thumb:active {
+        background-color: #ffd026 !important;
+        box-shadow: 0 0 10px rgba(255, 208, 38, 0.4) !important;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: #ffe066 !important;
+      }
+
+      ::-webkit-scrollbar-button,
+      ::-webkit-scrollbar-corner {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: transparent !important;
+      }
+
+      /* Firefox Support */
+      .is-scrolling,
+      .is-scrolling *,
+      html.is-scrolling *,
+      body.is-scrolling * {
+        scrollbar-color: #ffd026 transparent !important;
+      }
+
+      /* Compatibility classes */
+      .dukaan-custom-scrollbar,
+      .custom-scrollbar,
+      .auto-hide-scrollbar,
+      .scrollbar-thin {
+        scrollbar-width: thin !important;
+        scrollbar-color: transparent transparent !important;
+      }
+
+      .dukaan-custom-scrollbar.is-scrolling,
+      .custom-scrollbar.is-scrolling,
+      .auto-hide-scrollbar.is-scrolling,
+      .scrollbar-thin.is-scrolling,
+      .is-scrolling .dukaan-custom-scrollbar,
+      .is-scrolling .custom-scrollbar,
+      .is-scrolling .auto-hide-scrollbar,
+      .is-scrolling .scrollbar-thin {
+        scrollbar-color: #ffd026 transparent !important;
+      }

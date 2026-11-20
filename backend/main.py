@@ -130,10 +130,16 @@ app.add_exception_handler(Exception, generic_exception_handler)
 
 static_dir = Path(__file__).resolve().parent / "static"
 assets_dir = static_dir / "assets"
+js_dir = static_dir / "js"
+css_dir = static_dir / "css"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 if assets_dir.exists():
     app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+if js_dir.exists():
+    app.mount("/js", StaticFiles(directory=str(js_dir)), name="js")
+if css_dir.exists():
+    app.mount("/css", StaticFiles(directory=str(css_dir)), name="css")
 landing_dir = Path(__file__).resolve().parent.parent / "landing"
 if landing_dir.exists():
     app.mount("/landing", StaticFiles(directory=str(landing_dir), html=True), name="landing")
@@ -168,6 +174,7 @@ def favicon_png():
 @app.get("/automation")
 @app.get("/reports")
 @app.get("/settings")
+@app.get("/plans")
 @app.get("/docs")
 @app.get("/docs/{subpath:path}")
 def serve_ui(subpath: Optional[str] = None):

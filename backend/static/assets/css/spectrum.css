@@ -1,0 +1,10 @@
+svg[viewBox="0 0 320 24"] line {
+        stroke-linecap: round !important;
+        stroke-width: 2.8px !important;
+      }
+      svg[viewBox="0 0 320 24"] line:nth-child(even) {
+        stroke: #000000 !important;
+      }
+      svg[viewBox="0 0 320 24"] line:nth-child(odd) {
+        stroke: #64748b !important;
+      }
