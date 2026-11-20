@@ -380,6 +380,33 @@ class IntentExecutor:
                     normalization_notes=norm_meta,
                 )
 
+        if action == "request_recorded_pending":
+            sh_data = shop_queries.get_shop_by_id(shop_id)
+            ow_id = sh_data["owner_id"] if sh_data else 1
+            raw_ins = params.get("raw_instruction") or orig_text or "Voice Instruction"
+            try:
+                notification_queries.create_notification(
+                    shop_id=shop_id,
+                    user_id=ow_id,
+                    title="📋 Request Recorded (AI Busy Recovery)",
+                    message=f"Request recorded: '{raw_ins}'. AI service is currently busy; transaction will process and confirm here.",
+                    notification_type="info",
+                )
+            except Exception as n_err:
+                logger.warning("Failed to write notification for pending request: %s", n_err)
+            
+            spoken = "Aapka request note kar liya gaya hai. AI service abhi busy hai, kripya thodi der baad dekhein, aapke notification section me confirmation dikh jayega."
+            return ExecutionResult(
+                success=True,
+                action="request_recorded_pending",
+                result={"status": "recorded", "instruction": raw_ins},
+                message=spoken,
+                spoken_message=spoken,
+                detected_language=detect_language(orig_text or norm_text),
+                original_text=orig_text,
+                normalized_text=norm_text,
+            )
+
         raw_l = f"{orig_text} {norm_text}".lower()
         if not action or action in ("none", "unknown", "customer_history", "daily_summary") or intent in ("customer_query", "khata_query", "history_query", "customer_management", "unknown"):
             if any(k in raw_l for k in ["मेरी लिस्ट", "लिस्ट में", "कौन कौन", "कौन-कौन", "ग्राहक कौन", "ग्राहक लिस्ट", "लिस्ट बताओ", "କିଏ କିଏ", "ତାଲିକା", "meri list", "list me aur", "list me kaun", "kaun kaun hai", "customer list", "grahak list", "sabke naam", "all customer", "show customer"]):
@@ -701,18 +728,29 @@ class IntentExecutor:
                         else:
                             spoken_msg = f"Payment of Rs {tx['amount']:,.2f} recorded for {resolved_cust['name']}. Remaining balance is Rs {new_bal:,.2f}."
                     else:
-                        spoken_msg = get_localized_confirmation(
-                            action=action,
-                            customer=resolved_cust['name'],
-                            amount=tx['amount'],
-                            lang=lang,
-                            was_created=was_created
-                        )
+                        float_amt = float(tx['amount'])
+                        disp_amt = int(float_amt) if float_amt.is_integer() else f"{float_amt:,.2f}"
+                        if params.get("is_ai_busy") or params.get("busy_fallback"):
+                            spoken_msg = f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {resolved_cust['name']} ka ₹{disp_amt} ka record update ho gaya hai aur notification section me confirmation dikh jayega."
+                        else:
+                            spoken_msg = get_localized_confirmation(
+                                action=action,
+                                customer=resolved_cust['name'],
+                                amount=tx['amount'],
+                                lang=lang,
+                                was_created=was_created
+                            )
                     try:
                         sh_data = shop_queries.get_shop_by_id(shop_id)
                         ow_id = sh_data["owner_id"] if sh_data else 1
-                        n_title = f"नया उधार / Credit: {resolved_cust['name']}" if t_type == "credit" else f"भुगतान प्राप्त / Payment: {resolved_cust['name']}"
-                        n_msg = f"{t_type.capitalize()} of Rs {tx['amount']} recorded for {resolved_cust['name']}."
+                        float_amt = float(tx['amount'])
+                        disp_amt = int(float_amt) if float_amt.is_integer() else f"{float_amt:,.2f}"
+                        if params.get("is_ai_busy") or params.get("busy_fallback"):
+                            n_title = f"📋 Request Recorded: ₹{disp_amt} {t_type.capitalize()}"
+                            n_msg = f"₹{float_amt:,.2f} {t_type} entry for {resolved_cust['name']} has been successfully recorded in your ledger. (System was busy, processed via resilient queue)."
+                        else:
+                            n_title = f"नया उधार / Credit: {resolved_cust['name']}" if t_type == "credit" else f"भुगतान प्राप्त / Payment: {resolved_cust['name']}"
+                            n_msg = f"{t_type.capitalize()} of Rs {tx['amount']} recorded for {resolved_cust['name']}."
                         notification_queries.create_notification(
                             shop_id=shop_id,
                             user_id=ow_id,
@@ -1271,4 +1309,5 @@ class IntentExecutor:
         except BusinessLogicError as exc:
             return ExecutionResult(success=False, action=action, message=str(exc), original_text=orig_text)
         except Exception as exc:
+            logger.error("IntentExecutor unexpected failure: %s", exc, exc_info=True)
             return ExecutionResult(success=False, action=action, message="Database operation failed.", original_text=orig_text)

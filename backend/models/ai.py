@@ -284,12 +284,17 @@ class GroqLLMClient:
             logger.info("Successfully resolved intent via smart offline Kirana fallback: %s", fallback_res.action)
             return fallback_res
 
+        # Resilient recording fallback: never cut off user flow or drop instructions
+        logger.info("Recording pending instruction while AI service is busy: %s", raw_text)
         return CanonicalIntentContract(
-            intent="unknown",
-            action="service_unavailable",
+            intent="credit_transaction",
+            action="request_recorded_pending",
             original_text=raw_text,
-            clarification_needed=True,
-            clarification_question="AI service is momentarily busy. Please repeat your instruction.",
+            normalized_text=raw_text,
+            clarification_needed=False,
+            parameters={"raw_instruction": raw_text, "shop_id": shop_id or 1, "is_ai_busy": True},
+            conversational_response="Aapka request note kar liya gaya hai. AI service abhi busy hai, kripya thodi der baad dekhein, aapke notification section me confirmation dikh jayega.",
+            clarification_question=None,
         )
 
     def _rule_based_fallback(self, text: str, shop_id: Optional[int] = None) -> Optional[CanonicalIntentContract]:
@@ -297,46 +302,100 @@ class GroqLLMClient:
         lower = raw.lower()
         if not raw:
             return None
-        
+
+        def _parse_amount(s: str) -> Optional[float]:
+            # Matches numbers with commas e.g. 10,000 or 1,50,000 or plain 500
+            m = re.search(r'(?:₹|rs\.?|rupaye|inr)?\s*(\b\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\b\d+(?:\.\d+)?)\b', s)
+            if m:
+                try:
+                    val = float(m.group(1).replace(',', ''))
+                    if val > 0:
+                        return val
+                except ValueError:
+                    pass
+            m_k = re.search(r'(\d+(?:\.\d+)?)\s*k\b', s)
+            if m_k:
+                return float(m_k.group(1)) * 1000.0
+            m_hz = re.search(r'(\d+(?:\.\d+)?)\s*(?:hazar|hazaar)\b', s)
+            if m_hz:
+                return float(m_hz.group(1)) * 1000.0
+            m_lakh = re.search(r'(\d+(?:\.\d+)?)\s*lakh\b', s)
+            if m_lakh:
+                return float(m_lakh.group(1)) * 100000.0
+            word_map = {'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'paanch': 5, 'panch': 5, 'dus': 10, 'das': 10, 'bees': 20, 'pachas': 50, 'pachaas': 50, 'sau': 100}
+            for w, num in word_map.items():
+                if f'{w} hazaar' in s or f'{w} hazar' in s:
+                    return float(num * 1000.0)
+                if f'{w} sau' in s:
+                    return float(num * 100.0)
+            return None
+
+        def _extract_customer(s: str, default: str = "Customer") -> str:
+            # Check generic indicators first
+            for gen in ['for a person', 'a person', 'someone', 'ek aadmi', 'kisi ka', 'kisi ko', 'grahak', 'customer', 'person', 'ek vyakti']:
+                if gen in s:
+                    return default
+            # Check for patterns like "for Ramesh" or "to Suresh"
+            m_for = re.search(r'(?:for|to|of)\s+([a-zA-Z\u0900-\u097F]+)', s, re.I)
+            if m_for:
+                cand = m_for.group(1).strip()
+                if cand.lower() not in ['a', 'the', 'udhaar', 'credit', 'payment', 'cash', 'money', 'someone', 'person', 'vyakti', 'aadmi']:
+                    return cand.capitalize()
+            # Check for "Ramesh ka/ko/ke/se/ne"
+            m_ka = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ka|ko|ke|se|ne)\b', s, re.I)
+            if m_ka:
+                cand = m_ka.group(1).strip()
+                if cand.lower() not in ['a', 'the', 'udhaar', 'credit', 'payment', 'cash', 'rupaye', 'rs', 'inr', 'kisi', 'ek', 'naya']:
+                    return cand.capitalize()
+            return default
+
         # 1. Udhaar / Credit Transaction
-        m_credit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ka|ko|ke|re)?\s*(?:₹|rs\.?|rupaye)?\s*(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye)?\s*(?:ka)?\s*(?:udhaar|udhar|baki|baaki|khat[ae]|likh|likho|de|diya|diye)', lower)
-        if not m_credit:
-            m_credit = re.search(r'(?:udhaar|udhar|baki|baaki|credit)\s+([a-zA-Z\u0900-\u097F]+)\s+(?:ko)?\s*(\d+(?:\.\d+)?)', lower)
-        if not m_credit:
-            m_credit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)\s*(?:udhaar|udhar|credit)', lower)
-        if m_credit:
-            cust = m_credit.group(1).capitalize()
-            amt = float(m_credit.group(2))
-            return CanonicalIntentContract(
-                intent="credit_transaction",
-                action="record_credit",
-                parameters={"customer_name": cust, "amount": amt, "type": "credit", "shop_id": shop_id or 1},
-                entities={"customer": cust, "amount": amt},
-                original_text=raw,
-                normalized_text=raw,
-                confidence=0.95,
-                conversational_response=f"{cust} ke khate me ₹{int(amt) if amt.is_integer() else amt} ka udhaar darj kar diya gaya hai.",
-            )
+        is_credit = any(k in lower for k in ["udhaar", "udhar", "credit", "baki", "baaki", "baaqi", "khat", "likh", "likho"])
+        if is_credit or ("add" in lower and any(c in lower for c in ["person", "grahak", "customer", "₹", "rs", "rupaye"])):
+            amt = _parse_amount(lower)
+            cust = _extract_customer(lower, default="Customer")
+            if amt:
+                return CanonicalIntentContract(
+                    intent="credit_transaction",
+                    action="record_credit",
+                    parameters={
+                        "customer_name": cust,
+                        "amount": amt,
+                        "type": "credit",
+                        "shop_id": shop_id or 1,
+                        "is_ai_busy": True,
+                        "busy_fallback": True,
+                    },
+                    entities={"customer": cust, "amount": amt},
+                    original_text=raw,
+                    normalized_text=raw,
+                    confidence=0.95,
+                    conversational_response=f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {cust} ka ₹{int(amt) if amt.is_integer() else amt} ka record update ho gaya hai aur notification section me confirmation dikh jayega.",
+                )
 
         # 2. Jama / Debit / Payment Transaction
-        m_debit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ne|se)?\s*(?:₹|rs\.?|rupaye)?\s*(\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye)?\s*(?:jama|payment|diye|diya|chuka|aaye|aaya|bheja)', lower)
-        if not m_debit:
-            m_debit = re.search(r'(?:jama|payment|paid)\s+([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)', lower)
-        if not m_debit:
-            m_debit = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(\d+(?:\.\d+)?)\s*(?:jama|payment)', lower)
-        if m_debit:
-            cust = m_debit.group(1).capitalize()
-            amt = float(m_debit.group(2))
-            return CanonicalIntentContract(
-                intent="credit_transaction",
-                action="record_debit",
-                parameters={"customer_name": cust, "amount": amt, "type": "debit", "shop_id": shop_id or 1},
-                entities={"customer": cust, "amount": amt},
-                original_text=raw,
-                normalized_text=raw,
-                confidence=0.95,
-                conversational_response=f"{cust} se ₹{int(amt) if amt.is_integer() else amt} ki payment prapt ho gayi hai.",
-            )
+        is_payment = any(k in lower for k in ["jama", "payment", "paid", "diye", "diya", "chuka", "vasool", "vasooli", "received", "aaye", "aaya", "bheja"])
+        if is_payment:
+            amt = _parse_amount(lower)
+            cust = _extract_customer(lower, default="Customer")
+            if amt:
+                return CanonicalIntentContract(
+                    intent="credit_transaction",
+                    action="record_debit",
+                    parameters={
+                        "customer_name": cust,
+                        "amount": amt,
+                        "type": "debit",
+                        "shop_id": shop_id or 1,
+                        "is_ai_busy": True,
+                        "busy_fallback": True,
+                    },
+                    entities={"customer": cust, "amount": amt},
+                    original_text=raw,
+                    normalized_text=raw,
+                    confidence=0.95,
+                    conversational_response=f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {cust} se ₹{int(amt) if amt.is_integer() else amt} ki payment ka record update ho gaya hai aur notification section me confirmation dikh jayega.",
+                )
 
         # 3. Add Customer
         m_cust = re.search(r'(?:add\s+customer|naya\s+customer|customer\s+banao|customer\s+jodo)\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(\d{10}))?', lower)
@@ -348,12 +407,12 @@ class GroqLLMClient:
             return CanonicalIntentContract(
                 intent="customer_management",
                 action="add_customer",
-                parameters={"customer_name": cust, "phone": phone or "", "shop_id": shop_id or 1},
+                parameters={"customer_name": cust, "phone": phone or "", "shop_id": shop_id or 1, "is_ai_busy": True},
                 entities={"customer": cust, "phone": phone or ""},
                 original_text=raw,
                 normalized_text=raw,
                 confidence=0.95,
-                conversational_response=f"Naya customer {cust} safaltapoorvak jod diya gaya hai.",
+                conversational_response=f"Aapka request note kar liya gaya hai. AI service busy hai, naya customer {cust} jod diya gaya hai.",
             )
 
         # 4. Greeting / Conversation

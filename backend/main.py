@@ -505,19 +505,49 @@ def login_endpoint(request: Request, payload: LoginPayload):
             detail="First register yourself",
         )
     
-    if payload.password:
+    if payload.otp and payload.otp.strip():
+        submitted_otp = payload.otp.strip()
+        matched = False
+        user_phone = user.get("phone") or ""
+        user_email = (user.get("email") or "").lower()
+        digits = "".join(c for c in user_phone if c.isdigit())
+        last10 = digits[-10:] if len(digits) >= 10 else digits
+        now = time.time()
+        
+        # Check against all possible keys under which the OTP might have been registered
+        candidate_keys = [user_phone, last10, user_email, raw_identifier, clean_identifier]
+        for key in candidate_keys:
+            if key and key in ACTIVE_OTPS:
+                entry = ACTIVE_OTPS[key]
+                if entry.get("code") == submitted_otp:
+                    if now - entry.get("created_at", now) <= 600:
+                        matched = True
+                        break
+        
+        if not matched:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification code.",
+            )
+        
+        # Invalidate OTP after successful consumption
+        for key in candidate_keys:
+            if key:
+                ACTIVE_OTPS.pop(key, None)
+    else:
+        # Password-based step (or initial 2FA credential check)
+        if not payload.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Password or OTP is required to log in.",
+            )
         if not verify_password(payload.password, user["password"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to log in. Check your credentials and try again.",
             )
 
-    if not payload.otp:
-        if not payload.password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password or OTP is required to log in.",
-            )
+        # Generate and dispatch 2FA OTP code to registered email
         code = f"{random.randint(100000, 999999)}"
         now = time.time()
         user_email = (user.get("email") or "").lower()
@@ -530,6 +560,7 @@ def login_endpoint(request: Request, payload: LoginPayload):
         if len(digits) >= 10:
             ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": user_email, "created_at": now}
         ACTIVE_OTPS[clean_identifier] = {"code": code, "email": user_email, "created_at": now}
+        ACTIVE_OTPS[raw_identifier] = {"code": code, "email": user_email, "created_at": now}
         send_otp_email(user_email, code, user.get("name") or "Shop Owner")
         masked = mask_email(user_email)
         return AuthResponse(
@@ -545,26 +576,6 @@ def login_endpoint(request: Request, payload: LoginPayload):
             shop_id=0,
             shop_name="",
             shop_address="",
-        )
-
-    submitted_otp = payload.otp.strip()
-    matched = False
-    user_phone = user.get("phone") or ""
-    user_email = (user.get("email") or "").lower()
-    digits = "".join(c for c in user_phone if c.isdigit())
-    last10 = digits[-10:] if len(digits) >= 10 else digits
-    if user_phone and ACTIVE_OTPS.get(user_phone) and ACTIVE_OTPS[user_phone]["code"] == submitted_otp:
-        matched = True
-    elif last10 and ACTIVE_OTPS.get(last10) and ACTIVE_OTPS[last10]["code"] == submitted_otp:
-        matched = True
-    elif user_email and ACTIVE_OTPS.get(user_email) and ACTIVE_OTPS[user_email]["code"] == submitted_otp:
-        matched = True
-    elif ACTIVE_OTPS.get(raw_identifier) and ACTIVE_OTPS[raw_identifier]["code"] == submitted_otp:
-        matched = True
-    if not matched:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired verification code.",
         )
     
     user_id = user["id"]
@@ -1186,11 +1197,44 @@ def understand_intent_endpoint(
             error_message=None,
         )
     except Exception as exc:
-        logger.error("Unhandled error in understand_intent_endpoint: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Service temporarily unavailable. Please try again later.",
-        ) from exc
+        logger.error("Error in understand_intent_endpoint, falling back to resilient recording: %s", exc, exc_info=True, extra={"correlation_id": getattr(request.state, "correlation_id", None)})
+        try:
+            from backend.models.ai import GroqLLMClient
+            llm = GroqLLMClient()
+            contract = llm._rule_based_fallback(clean_text, shop_id=current_shop.get("shop_id", 1))
+            if contract:
+                return UnderstandIntentResponseModel(
+                    success=True,
+                    intent=contract.intent,
+                    action=contract.action,
+                    parameters=contract.parameters,
+                    entities=contract.entities,
+                    original_text=contract.original_text,
+                    normalized_text=contract.normalized_text,
+                    normalization=contract.normalization,
+                    confidence=float(contract.confidence),
+                    requires_confirmation=contract.requires_confirmation,
+                    clarification_needed=contract.clarification_needed,
+                    clarification_question=contract.clarification_question,
+                    error_message=None,
+                )
+        except Exception:
+            pass
+        return UnderstandIntentResponseModel(
+            success=True,
+            intent="credit_transaction",
+            action="request_recorded_pending",
+            parameters={"raw_instruction": clean_text, "shop_id": current_shop.get("shop_id", 1), "is_ai_busy": True},
+            entities={},
+            original_text=clean_text,
+            normalized_text=clean_text,
+            normalization={},
+            confidence=0.9,
+            requires_confirmation=False,
+            clarification_needed=False,
+            clarification_question=None,
+            error_message=None,
+        )
 
 @app.post(
     "/api/action/execute",

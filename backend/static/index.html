@@ -7,7 +7,7 @@
     <link rel="apple-touch-icon" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
-    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs14"></script>
+    <script type="module" crossorigin src="/assets/index-YB33VD4W.js?v=bs17"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-OmZBMvCT.css?v=bs11">
     <style id="dukaan-windows-notification-style">
       #dukaan-windows-toast-container {
@@ -609,56 +609,7 @@ body.is-scrolling * {
       }
     });
 
-    var bannerObserver = new MutationObserver(function(mutations) {
-      for (var i = 0; i < mutations.length; i++) {
-        var m = mutations[i];
-        if (m.addedNodes) {
-          for (var j = 0; j < m.addedNodes.length; j++) {
-            var node = m.addedNodes[j];
-            if (node.nodeType === 1) {
-              checkAndUpgradeBanner(node);
-              var matches = node.querySelectorAll ? node.querySelectorAll('[class*="bg-emerald"], [class*="bg-rose"], [class*="bg-amber"]') : [];
-              for (var k = 0; k < matches.length; k++) {
-                checkAndUpgradeBanner(matches[k]);
-              }
-            }
-          }
-        }
-      }
-    });
-
-    function checkAndUpgradeBanner(el) {
-      if (!el || !el.className || typeof el.className !== 'string') return;
-      if (el.closest && (el.closest('#dukaan-windows-toast-container') || el.closest('.win11-toast'))) return;
-      
-      var cls = el.className || '';
-      var isWarning = cls.indexOf('amber') !== -1 || cls.indexOf('yellow') !== -1;
-      var isErr = cls.indexOf('rose') !== -1 || cls.indexOf('red') !== -1;
-      var isSuccess = cls.indexOf('emerald') !== -1 || cls.indexOf('green') !== -1;
-      var isAlertBanner = (isSuccess || isErr || isWarning) && (
-        cls.indexOf('rounded-xl') !== -1 || cls.indexOf('rounded-2xl') !== -1 || cls.indexOf('rounded-lg') !== -1 || cls.indexOf('p-3') !== -1 || cls.indexOf('p-2') !== -1
-      );
-
-      if (isAlertBanner && !el.dataset.winUpgraded) {
-        var text = (el.innerText || el.textContent || '').trim();
-        if (text && text.length > 2 && text.length < 300) {
-          if (el.tagName !== 'BUTTON' && !el.querySelector('table') && !el.querySelector('input') && !el.querySelector('form')) {
-            el.dataset.winUpgraded = 'true';
-            var type = isErr ? 'error' : (isWarning ? 'warning' : 'success');
-            var isSettings = text.toLowerCase().indexOf('setting') !== -1;
-            var title = isSettings ? (isErr ? 'Settings Error' : 'Settings Saved') : (isErr ? 'Error' : (isWarning ? 'Notice' : 'Success'));
-            
-            el.style.display = 'none';
-
-            window.showDukaanNotification({
-              title: title,
-              message: text,
-              type: type
-            });
-          }
-        }
-      }
-    }
+    // Banner observer removed to prevent intrusive sliding notifications on forms & login screens
 
     function setNativeValue(element, value) {
       try {
@@ -739,11 +690,9 @@ body.is-scrolling * {
     }
 
     if (document.body) {
-      bannerObserver.observe(document.body, { childList: true, subtree: true });
       setInterval(checkOtpInputs, 500);
     } else {
       window.addEventListener('DOMContentLoaded', function() {
-        bannerObserver.observe(document.body, { childList: true, subtree: true });
         setInterval(checkOtpInputs, 500);
       });
     }
