@@ -207,6 +207,13 @@ class GroqLLMClient:
                 clarification_question="Koi instruction nahi mila. Kripya dobara bolein.",
             )
 
+        # 1. Local-First Fast Path: Match high-confidence Kirana intents in <1ms without network latency
+        instant_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
+        if instant_res:
+            logger.info("Instantly resolved intent via smart offline Kirana engine: %s", instant_res.action)
+            return instant_res
+
+        # 2. Remote LLM Path: Only invoked for nuanced or unmapped requests
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
@@ -221,7 +228,7 @@ class GroqLLMClient:
 
         messages.append({"role": "user", "content": raw_text})
 
-        max_attempts = 3
+        max_attempts = 2
         last_exc = None
         for attempt in range(max_attempts):
             try:
@@ -425,7 +432,34 @@ class GroqLLMClient:
                 conversational_response=f"Ji bhaiya, naye customer {cust} ko khate me jod diya hai.",
             )
 
-        # 4. Greeting / Conversation
+        # 4. Check Balance / Ledger
+        if any(w in lower for w in ["khata dikhao", "hisab batao", "balance batao", "total udhar", "kitna udhar", "check balance"]):
+            cust = _extract_customer(lower, default="")
+            return CanonicalIntentContract(
+                intent="ledger_inquiry",
+                action="check_balance",
+                parameters={"customer_name": cust, "shop_id": shop_id or 1},
+                entities={"customer": cust},
+                original_text=raw,
+                normalized_text=raw,
+                confidence=0.95,
+                conversational_response=f"Ji bhaiya, {cust} ji ka khata check kar rahe hain." if cust else "Ji bhaiya, dukaan ka khata check kar rahe hain.",
+            )
+
+        # 5. List Customers
+        if any(w in lower for w in ["customer list", "grahak list", "sabhi customer", "sabhi grahak", "customers dikhao"]):
+            return CanonicalIntentContract(
+                intent="customer_management",
+                action="list_customers",
+                parameters={"shop_id": shop_id or 1},
+                entities={},
+                original_text=raw,
+                normalized_text=raw,
+                confidence=0.95,
+                conversational_response="Ji bhaiya, aapke dukaan ke registered grahakon ki list yeh rahi.",
+            )
+
+        # 6. Greeting / Conversation
         if any(w in lower for w in ["hello", "namaste", "hi", "hey", "kaise ho", "kya haal"]):
             return CanonicalIntentContract(
                 intent="conversation",

@@ -380,25 +380,35 @@ class IntentExecutor:
                     normalization_notes=norm_meta,
                 )
 
-        if action == "request_recorded_pending":
+        if action in ("request_recorded_pending", "queued_processing"):
             sh_data = shop_queries.get_shop_by_id(shop_id)
             ow_id = sh_data["owner_id"] if sh_data else 1
             raw_ins = params.get("raw_instruction") or orig_text or "Voice Instruction"
+            
             try:
-                notification_queries.create_notification(
-                    shop_id=shop_id,
-                    user_id=ow_id,
-                    title="📋 Request Recorded (AI Busy Recovery)",
-                    message=f"Request recorded: '{raw_ins}'. AI service is currently busy; transaction will process and confirm here.",
-                    notification_type="info",
-                )
-            except Exception as n_err:
-                logger.warning("Failed to write notification for pending request: %s", n_err)
+                from backend.services.task_queue import DukaanTaskQueue
+                DukaanTaskQueue.enqueue(shop_id=shop_id, user_id=ow_id, text=raw_ins)
+            except Exception as q_err:
+                logger.warning("Failed to enqueue task: %s", q_err)
+
+            # Only log an immediate info note if it's not a financial transaction that the FIFO worker will log
+            has_financial_amount = bool(re.search(r'\d+', raw_ins))
+            if not has_financial_amount:
+                try:
+                    notification_queries.create_notification(
+                        shop_id=shop_id,
+                        user_id=ow_id,
+                        title="🎙️ Voice Note / आवाज नोट",
+                        message=f"Voice instruction noted: \"{raw_ins}\"",
+                        notification_type="info",
+                    )
+                except Exception as n_err:
+                    logger.warning("Failed to write notification for pending request: %s", n_err)
             
             spoken = "Theek hai bhaiya, aapka note likh liya hai, khata update ho raha hai."
             return ExecutionResult(
                 success=True,
-                action="request_recorded_pending",
+                action=action,
                 result={"status": "recorded", "instruction": raw_ins},
                 message=spoken,
                 spoken_message=spoken,
