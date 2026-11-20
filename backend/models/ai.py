@@ -293,7 +293,7 @@ class GroqLLMClient:
             normalized_text=raw_text,
             clarification_needed=False,
             parameters={"raw_instruction": raw_text, "shop_id": shop_id or 1, "is_ai_busy": True},
-            conversational_response="Aapka request note kar liya gaya hai. AI service abhi busy hai, kripya thodi der baad dekhein, aapke notification section me confirmation dikh jayega.",
+            conversational_response="Theek hai bhaiya, aapka note likh liya hai, khata update ho raha hai.",
             clarification_question=None,
         )
 
@@ -355,6 +355,11 @@ class GroqLLMClient:
             amt = _parse_amount(lower)
             cust = _extract_customer(lower, default="Customer")
             if amt:
+                disp_val = f"{int(amt) if amt.is_integer() else amt:,}"
+                if cust in ("Customer", "Grahak"):
+                    conv_resp = f"Theek hai bhaiya, ₹{disp_val} ka udhaar khate me darj kar diya hai."
+                else:
+                    conv_resp = f"Theek hai bhaiya, {cust} ji ke khate me ₹{disp_val} ka udhaar darj kar diya hai."
                 return CanonicalIntentContract(
                     intent="credit_transaction",
                     action="record_credit",
@@ -370,7 +375,7 @@ class GroqLLMClient:
                     original_text=raw,
                     normalized_text=raw,
                     confidence=0.95,
-                    conversational_response=f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {cust} ka ₹{int(amt) if amt.is_integer() else amt} ka record update ho gaya hai aur notification section me confirmation dikh jayega.",
+                    conversational_response=conv_resp,
                 )
 
         # 2. Jama / Debit / Payment Transaction
@@ -379,13 +384,18 @@ class GroqLLMClient:
             amt = _parse_amount(lower)
             cust = _extract_customer(lower, default="Customer")
             if amt:
+                disp_val = f"{int(amt) if amt.is_integer() else amt:,}"
+                if cust in ("Customer", "Grahak"):
+                    conv_resp = f"Ji bhaiya, ₹{disp_val} ka payment jama ho gaya hai."
+                else:
+                    conv_resp = f"Ji bhaiya, {cust} ji se ₹{disp_val} ka payment jama ho gaya hai."
                 return CanonicalIntentContract(
                     intent="credit_transaction",
-                    action="record_debit",
+                    action="record_payment",
                     parameters={
                         "customer_name": cust,
                         "amount": amt,
-                        "type": "debit",
+                        "type": "payment",
                         "shop_id": shop_id or 1,
                         "is_ai_busy": True,
                         "busy_fallback": True,
@@ -394,7 +404,7 @@ class GroqLLMClient:
                     original_text=raw,
                     normalized_text=raw,
                     confidence=0.95,
-                    conversational_response=f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {cust} se ₹{int(amt) if amt.is_integer() else amt} ki payment ka record update ho gaya hai aur notification section me confirmation dikh jayega.",
+                    conversational_response=conv_resp,
                 )
 
         # 3. Add Customer
@@ -412,7 +422,7 @@ class GroqLLMClient:
                 original_text=raw,
                 normalized_text=raw,
                 confidence=0.95,
-                conversational_response=f"Aapka request note kar liya gaya hai. AI service busy hai, naya customer {cust} jod diya gaya hai.",
+                conversational_response=f"Ji bhaiya, naye customer {cust} ko khate me jod diya hai.",
             )
 
         # 4. Greeting / Conversation

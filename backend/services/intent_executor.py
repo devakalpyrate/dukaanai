@@ -395,7 +395,7 @@ class IntentExecutor:
             except Exception as n_err:
                 logger.warning("Failed to write notification for pending request: %s", n_err)
             
-            spoken = "Aapka request note kar liya gaya hai. AI service abhi busy hai, kripya thodi der baad dekhein, aapke notification section me confirmation dikh jayega."
+            spoken = "Theek hai bhaiya, aapka note likh liya hai, khata update ho raha hai."
             return ExecutionResult(
                 success=True,
                 action="request_recorded_pending",
@@ -660,7 +660,7 @@ class IntentExecutor:
                         )
 
             if intent == "credit_transaction":
-                if action in ("record_credit", "record_payment"):
+                if action in ("record_credit", "record_payment", "record_debit"):
                     cust_name = params.get("customer_name") or entities.get("customer")
                     if not cust_name:
                         return ExecutionResult(
@@ -731,7 +731,10 @@ class IntentExecutor:
                         float_amt = float(tx['amount'])
                         disp_amt = int(float_amt) if float_amt.is_integer() else f"{float_amt:,.2f}"
                         if params.get("is_ai_busy") or params.get("busy_fallback"):
-                            spoken_msg = f"Aapka request note kar liya gaya hai. AI service abhi busy hai, {resolved_cust['name']} ka ₹{disp_amt} ka record update ho gaya hai aur notification section me confirmation dikh jayega."
+                            if resolved_cust['name'] in ("Customer", "Grahak"):
+                                spoken_msg = f"Theek hai bhaiya, ₹{disp_amt} ka udhaar khate me darj kar diya hai."
+                            else:
+                                spoken_msg = f"Theek hai bhaiya, {resolved_cust['name']} ji ke khate me ₹{disp_amt} ka udhaar darj kar diya hai."
                         else:
                             spoken_msg = get_localized_confirmation(
                                 action=action,
