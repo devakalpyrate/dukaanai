@@ -376,12 +376,42 @@ def get_current_shop(
             detail="Malformed token payload.",
         )
     
+    # 1. Strictly verify that the user still exists in the database
+    user = user_queries.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account does not exist or has been deleted. Please register or log in.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 2. Strictly verify that the shop exists and belongs to this exact user
     shop = shop_queries.get_shop_by_id(shop_id)
     if not shop or str(shop.get("owner_id")) != str(user_id):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session expired or account no longer exists. Please log in again.",
+            detail="Store does not exist or has been removed. Please log in again.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # 3. Multi-device live session check: verify another device has not terminated the session
+    token_iat = float(payload.get("iat") or 0)
+    if token_iat > 0:
+        try:
+            sb = get_supabase()
+            res = sb.table("notifications").select("message").eq("type", "auth_event").eq("title", "session_terminated").eq("user_id", user_id).order("id", desc=True).limit(1).execute()
+            if res.data:
+                term_time = float(res.data[0].get("message") or 0)
+                if term_time > token_iat:
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Session has been terminated from another device. Please log in again.",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     
     return {
         "user_id": user_id,
@@ -400,6 +430,7 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
     clean_phone = payload.phone.strip()
     clean_email = (payload.email or "").strip().lower()
 
+    user = None
     target_email = clean_email
     recipient_name = "Shop Owner"
 
@@ -417,12 +448,20 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No registered email address found for this account. Please use password login.",
             )
+    else:
+        existing = user_queries.get_user_credentials_by_email_or_phone(target_email) or (
+            user_queries.get_user_credentials_by_email_or_phone(clean_phone) if clean_phone else None
+        )
+        if existing:
+            user = existing
+            recipient_name = existing.get("name") or "Shop Owner"
 
     code = f"{random.randint(100000, 999999)}"
     digits = "".join(c for c in clean_phone if c.isdigit())
     last10 = digits[-10:] if len(digits) >= 10 else digits
+    identifiers = [k for k in [clean_phone, last10, target_email] if k]
     persist_serverless_otp(
-        [clean_phone, last10, target_email],
+        identifiers,
         code=code,
         shop_id=user.get("shop_id") if user else None,
     )
@@ -871,20 +910,56 @@ async def delete_account_endpoint(
         except Exception as mail_err:
             logger.error("Failed to send account deletion statement email: %s", mail_err)
 
-    success = user_queries.delete_user(user_id)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete account. Please try again.",
-        )
+    # Comprehensive cascading deletion across all relational tables
+    sb = get_supabase()
+    for tbl, col, val in [
+        ("transactions", "shop_id", shop_id),
+        ("customers", "shop_id", shop_id),
+        ("inventory", "shop_id", shop_id),
+        ("suppliers", "shop_id", shop_id),
+        ("notifications", "shop_id", shop_id),
+        ("settings", "shop_id", shop_id),
+        ("shops", "id", shop_id),
+        ("users", "id", user_id),
+    ]:
+        try:
+            sb.table(tbl).delete().eq(col, val).execute()
+        except Exception as del_err:
+            logger.warning("Cascading deletion warning on table %s: %s", tbl, del_err)
 
-    logger.info("Permanently deleted user %d (shop %d). Statement dispatched to %s", user_id, shop_id, user_email)
+    logger.info("Permanently deleted user %d (shop %d). Final statement dispatched to %s", user_id, shop_id, user_email)
 
     return {
         "success": True,
         "message": "Account and all store data permanently deleted. A final transaction statement has been emailed to you.",
         "archived_transactions": len(transactions),
     }
+
+@app.post(
+    "/api/auth/logout",
+    summary="Logout user session across all active devices",
+)
+def logout_endpoint(
+    request: Request,
+    current_shop: Dict[str, Any] = Depends(get_current_shop),
+):
+    user_id = current_shop["user_id"]
+    shop_id = current_shop["shop_id"]
+    try:
+        sb = get_supabase()
+        now_ts = str(int(time.time()))
+        sb.table("notifications").insert({
+            "shop_id": shop_id,
+            "user_id": user_id,
+            "title": "session_terminated",
+            "message": now_ts,
+            "type": "auth_event",
+            "is_read": True,
+        }).execute()
+    except Exception as exc:
+        logger.warning("Could not record session_terminated event in DB: %s", exc)
+
+    return {"success": True, "message": "Logged out successfully across all devices."}
 
 @app.patch(
     "/api/notifications/{notification_id}/read",
@@ -1378,7 +1453,7 @@ def get_customer_invoice_pdf_endpoint(
             except Exception:
                 pass
     if not target_shop_id:
-        target_shop_id = 1
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to view invoice.")
 
     cust = customer_queries.get_customer_by_id(customer_id, shop_id=target_shop_id)
     if not cust:

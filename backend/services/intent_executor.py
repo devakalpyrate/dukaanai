@@ -338,7 +338,17 @@ class IntentExecutor:
                 normalization_notes=norm_meta,
             )
 
-        shop_id = params.get("shop_id") or intent_data.get("shop_id") or 1
+        shop_id = params.get("shop_id") or intent_data.get("shop_id")
+        if not shop_id or not shop_queries.get_shop_by_id(shop_id):
+            try:
+                client = get_supabase()
+                sh_res = client.table("shops").select("id").limit(1).execute()
+                if sh_res.data:
+                    shop_id = sh_res.data[0]["id"]
+                else:
+                    shop_id = 1
+            except Exception:
+                shop_id = 1
         try:
             ShopVerificationService.verify_shop_exists(shop_id)
         except (EntityNotFoundError, ValidationError) as exc:
@@ -385,37 +395,65 @@ class IntentExecutor:
             ow_id = sh_data["owner_id"] if sh_data else 1
             raw_ins = params.get("raw_instruction") or orig_text or "Voice Instruction"
             
-            try:
-                from backend.services.task_queue import DukaanTaskQueue
-                DukaanTaskQueue.enqueue(shop_id=shop_id, user_id=ow_id, text=raw_ins)
-            except Exception as q_err:
-                logger.warning("Failed to enqueue task: %s", q_err)
+            # Synchronous Live Execution: If instruction has a financial amount, execute immediately into SQL
+            from backend.models.ai import get_llm_client
+            llm = get_llm_client()
+            parsed_contract = llm._rule_based_fallback(raw_ins, shop_id=shop_id)
+            if parsed_contract and parsed_contract.action in ("record_credit", "record_payment", "record_debit"):
+                intent = parsed_contract.intent
+                action = parsed_contract.action
+                params = parsed_contract.parameters
+                entities = parsed_contract.entities
+            else:
+                m_amt = re.search(r'(?:₹|rs\.?|rupaye|रुपये|रुपया)?\s*(\b\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye|रुपये|रुपया)?\b', raw_ins, re.I)
+                if m_amt:
+                    found_amt = float(m_amt.group(1))
+                    is_pay = any(k in raw_ins.lower() for k in ["jama", "diye", "mila", "pay", "paid", "chuka", "जमा", "दिए", "चुकाया", "ଜମା"])
+                    act = "record_payment" if is_pay else "record_credit"
+                    intent = "credit_transaction"
+                    action = act
+                    cust_cand = "Customer"
+                    for w in raw_ins.split():
+                        clean_w = re.sub(r'[^a-zA-Z\u0900-\u097F\u0B00-\u0B7F]', '', w)
+                        if len(clean_w) > 2 and clean_w.lower() not in ["udhar", "udhaar", "likh", "likho", "jama", "karo", "bhaiya", "rupaye", "rupay", "baki", "credit", "tanka", "rupee"]:
+                            cust_cand = clean_w.capitalize()
+                            break
+                    params = {
+                        "customer_name": cust_cand,
+                        "amount": found_amt,
+                        "type": "payment" if is_pay else "credit",
+                        "shop_id": shop_id,
+                    }
+                    entities = {"customer": cust_cand, "amount": found_amt}
+                else:
+                    try:
+                        from backend.services.task_queue import ShopFIFOQueueManager
+                        ShopFIFOQueueManager.enqueue_task(shop_id=shop_id, user_id=ow_id, raw_text=raw_ins)
+                    except Exception as q_err:
+                        logger.warning("Failed to enqueue task: %s", q_err)
 
-            # Only log an immediate info note if it's not a financial transaction that the FIFO worker will log
-            has_financial_amount = bool(re.search(r'\d+', raw_ins))
-            if not has_financial_amount:
-                try:
-                    notification_queries.create_notification(
-                        shop_id=shop_id,
-                        user_id=ow_id,
-                        title="🎙️ Voice Note / आवाज नोट",
-                        message=f"Voice instruction noted: \"{raw_ins}\"",
-                        notification_type="info",
+                    try:
+                        notification_queries.create_notification(
+                            shop_id=shop_id,
+                            user_id=ow_id,
+                            title="🎙️ Voice Note / आवाज नोट",
+                            message=f"Voice instruction noted: \"{raw_ins}\"",
+                            notification_type="info",
+                        )
+                    except Exception as n_err:
+                        logger.warning("Failed to write notification for pending request: %s", n_err)
+                    
+                    spoken = "Theek hai bhaiya, aapka note likh liya hai, khata update ho raha hai."
+                    return ExecutionResult(
+                        success=True,
+                        action=action,
+                        result={"status": "recorded", "instruction": raw_ins},
+                        message=spoken,
+                        spoken_message=spoken,
+                        detected_language=detect_language(orig_text or norm_text),
+                        original_text=orig_text,
+                        normalized_text=norm_text,
                     )
-                except Exception as n_err:
-                    logger.warning("Failed to write notification for pending request: %s", n_err)
-            
-            spoken = "Theek hai bhaiya, aapka note likh liya hai, khata update ho raha hai."
-            return ExecutionResult(
-                success=True,
-                action=action,
-                result={"status": "recorded", "instruction": raw_ins},
-                message=spoken,
-                spoken_message=spoken,
-                detected_language=detect_language(orig_text or norm_text),
-                original_text=orig_text,
-                normalized_text=norm_text,
-            )
 
         raw_l = f"{orig_text} {norm_text}".lower()
         if not action or action in ("none", "unknown", "customer_history", "daily_summary") or intent in ("customer_query", "khata_query", "history_query", "customer_management", "unknown"):
@@ -720,39 +758,20 @@ class IntentExecutor:
                     lang = detect_language(orig_text or norm_text)
                     new_bal_info = customer_queries.get_customer_balance_in_db(shop_id=shop_id, customer_id=cust_id)
                     new_bal = float(new_bal_info["balance"]) if new_bal_info and new_bal_info.get("balance") is not None else 0.0
-                    if t_type == "payment":
-                        if lang == "hi":
-                            if new_bal > 0:
-                                spoken_msg = f"{resolved_cust['name']} से ₹{tx['amount']:,.2f} का भुगतान जमा कर दिया गया है। खाते में अब बाकी उधार ₹{new_bal:,.2f} है।"
-                            else:
-                                spoken_msg = f"{resolved_cust['name']} से ₹{tx['amount']:,.2f} प्राप्त हुए। पूरा उधार चुकता हो चुका है, बैलेंस अब ₹0.00 है।"
-                        elif lang in ("or", "or-latn"):
-                            spoken_msg = f"{resolved_cust['name']}ଙ୍କଠାରୁ ₹{tx['amount']:,.2f} ଜମା କରାଗଲା। ବାକି ଉଧାର ଏବେ ₹{new_bal:,.2f} ଅଛି।"
-                        elif lang in ("ta", "ta-latn"):
-                            if new_bal > 0:
-                                spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{tx['amount']:,.2f} பெறப்பட்டது. மீதமுள்ள கடன் பாக்கி ₹{new_bal:,.2f}."
-                            else:
-                                spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{tx['amount']:,.2f} பெறப்பட்டது. அனைத்து கடனும் தீர்க்கப்பட்டது, பாக்கி ₹0.00."
-                        elif lang == "hi-latn":
-                            spoken_msg = f"{resolved_cust['name']} se ₹{tx['amount']:,.2f} ka payment jama ho gaya hai. Khate me baki udhaar ₹{new_bal:,.2f} hai."
-                        else:
-                            spoken_msg = f"Payment of Rs {tx['amount']:,.2f} recorded for {resolved_cust['name']}. Remaining balance is Rs {new_bal:,.2f}."
-                    else:
-                        float_amt = float(tx['amount'])
-                        disp_amt = int(float_amt) if float_amt.is_integer() else f"{float_amt:,.2f}"
-                        if params.get("is_ai_busy") or params.get("busy_fallback"):
-                            if resolved_cust['name'] in ("Customer", "Grahak"):
-                                spoken_msg = f"Theek hai bhaiya, ₹{disp_amt} ka udhaar khate me darj kar diya hai."
-                            else:
-                                spoken_msg = f"Theek hai bhaiya, {resolved_cust['name']} ji ke khate me ₹{disp_amt} ka udhaar darj kar diya hai."
-                        else:
-                            spoken_msg = get_localized_confirmation(
-                                action=action,
-                                customer=resolved_cust['name'],
-                                amount=tx['amount'],
-                                lang=lang,
-                                was_created=was_created
-                            )
+                    # Let Sarvam LLM speak back to the user naturally in their native language
+                    from backend.models.ai import generate_conversational_response
+                    spoken_msg = generate_conversational_response(
+                        original_text=orig_text or norm_text,
+                        action=action,
+                        details={
+                            "customer": resolved_cust['name'],
+                            "amount": tx['amount'],
+                            "balance": new_bal,
+                            "type": t_type,
+                            "fallback_message": intent_data.get("conversational_response"),
+                        },
+                        shop_id=shop_id,
+                    )
                     try:
                         sh_data = shop_queries.get_shop_by_id(shop_id)
                         ow_id = sh_data["owner_id"] if sh_data else 1
@@ -837,16 +856,19 @@ class IntentExecutor:
                         )
                         new_bal_info = customer_queries.get_customer_balance_in_db(shop_id=shop_id, customer_id=cust_id)
                         new_bal = float(new_bal_info["balance"]) if new_bal_info and new_bal_info.get("balance") is not None else max(0.0, current_balance - specified_amount)
-                        if lang == "hi":
-                            spoken_msg = f"{resolved_cust['name']} से ₹{specified_amount:,.2f} का भुगतान जमा कर दिया गया है। खाते में अब बाकी उधार ₹{new_bal:,.2f} है।"
-                        elif lang in ("or", "or-latn"):
-                            spoken_msg = f"{resolved_cust['name']}ଙ୍କଠାରୁ ₹{specified_amount:,.2f} ଜମା କରାଗଲା। ବାକି ଉଧାର ଏବେ ₹{new_bal:,.2f} ଅଛି।"
-                        elif lang in ("ta", "ta-latn"):
-                            spoken_msg = f"{resolved_cust['name']} இடமிருந்து ₹{specified_amount:,.2f} பெறப்பட்டது. மீதமுள்ள கடன் பாக்கி ₹{new_bal:,.2f}."
-                        elif lang == "hi-latn":
-                            spoken_msg = f"{resolved_cust['name']} se ₹{specified_amount:,.2f} ka payment jama ho gaya hai. Khate me baki udhaar ₹{new_bal:,.2f} hai."
-                        else:
-                            spoken_msg = f"Payment of Rs {specified_amount:,.2f} recorded for {resolved_cust['name']}. Remaining balance is Rs {new_bal:,.2f}."
+                        from backend.models.ai import generate_conversational_response
+                        spoken_msg = generate_conversational_response(
+                            original_text=orig_text or norm_text,
+                            action="record_payment",
+                            details={
+                                "customer": resolved_cust['name'],
+                                "amount": specified_amount,
+                                "balance": new_bal,
+                                "type": "payment",
+                                "fallback_message": intent_data.get("conversational_response"),
+                            },
+                            shop_id=shop_id,
+                        )
                         try:
                             sh_data = shop_queries.get_shop_by_id(shop_id)
                             ow_id = sh_data["owner_id"] if sh_data else 1
@@ -879,11 +901,18 @@ class IntentExecutor:
                         description="Full credit clearance / उधार चुकता",
                         request_id=request_id,
                     )
-                    spoken_msg = get_localized_confirmation(
+                    from backend.models.ai import generate_conversational_response
+                    spoken_msg = generate_conversational_response(
+                        original_text=orig_text or norm_text,
                         action="clear_debt",
-                        customer=resolved_cust["name"],
-                        amount=current_balance,
-                        lang=lang,
+                        details={
+                            "customer": resolved_cust["name"],
+                            "amount": current_balance,
+                            "balance": 0.0,
+                            "type": "clear_debt",
+                            "fallback_message": intent_data.get("conversational_response"),
+                        },
+                        shop_id=shop_id,
                     )
                     try:
                         sh_data = shop_queries.get_shop_by_id(shop_id)
