@@ -118,7 +118,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ALLOWED_ORIGINS,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -279,6 +279,69 @@ class AuthResponse(BaseModel):
 
 ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 
+def persist_serverless_otp(keys: list[str], code: str, shop_id: Any = None, expires_in: int = 600):
+    now = time.time()
+    for k in keys:
+        if k:
+            ACTIVE_OTPS[k] = {"code": code, "created_at": now}
+    try:
+        from backend.database.supabase_client import get_supabase
+        sb = get_supabase()
+        clean_keys = [str(k).strip().lower() for k in keys if k]
+        payload = {
+            "title": "system_otp",
+            "message": json.dumps({"keys": clean_keys, "code": str(code).strip(), "expires_at": now + expires_in}),
+            "type": "system_otp",
+            "is_read": False,
+        }
+        if shop_id:
+            payload["shop_id"] = int(shop_id) if str(shop_id).isdigit() else None
+        sb.table("notifications").insert(payload).execute()
+    except Exception as exc:
+        logger.warning("Could not persist serverless OTP to DB: %s", exc)
+
+def verify_serverless_otp(candidate_keys: list[str], submitted_otp: str) -> bool:
+    now = time.time()
+    clean_submitted = submitted_otp.strip()
+    for key in candidate_keys:
+        if key and key in ACTIVE_OTPS:
+            entry = ACTIVE_OTPS[key]
+            if str(entry.get("code")).strip() == clean_submitted:
+                if now - entry.get("created_at", now) <= 600:
+                    for k in candidate_keys:
+                        if k:
+                            ACTIVE_OTPS.pop(k, None)
+                    return True
+    try:
+        from backend.database.supabase_client import get_supabase
+        sb = get_supabase()
+        res = sb.table("notifications").select("id, message, created_at").eq("type", "system_otp").order("created_at", desc=True).limit(25).execute()
+        valid_set = {str(k).strip().lower() for k in candidate_keys if k}
+        matched_id = None
+        for row in (res.data or []):
+            try:
+                data = json.loads(row.get("message") or "{}")
+                entry_code = str(data.get("code") or "").strip()
+                expires_at = float(data.get("expires_at") or 0)
+                entry_keys = {str(k).strip().lower() for k in data.get("keys", [])}
+                if entry_code == clean_submitted and now <= expires_at and valid_set.intersection(entry_keys):
+                    matched_id = row.get("id")
+                    break
+            except Exception:
+                continue
+        if matched_id:
+            try:
+                sb.table("notifications").delete().eq("id", matched_id).execute()
+            except Exception:
+                pass
+            for k in candidate_keys:
+                if k:
+                    ACTIVE_OTPS.pop(k, None)
+            return True
+    except Exception as exc:
+        logger.warning("Error checking serverless OTP in DB: %s", exc)
+    return False
+
 class SpeakPayload(BaseModel):
     text: str = Field(..., min_length=1, max_length=500, description="Text to synthesize to speech")
     voice: Optional[str] = Field("Amit", description="Voice profile for synthesis")
@@ -356,13 +419,13 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
             )
 
     code = f"{random.randint(100000, 999999)}"
-    now = time.time()
-    ACTIVE_OTPS[clean_phone] = {"code": code, "email": target_email, "created_at": now}
     digits = "".join(c for c in clean_phone if c.isdigit())
-    if len(digits) >= 10:
-        ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": target_email, "created_at": now}
-    if target_email:
-        ACTIVE_OTPS[target_email] = {"code": code, "phone": clean_phone, "created_at": now}
+    last10 = digits[-10:] if len(digits) >= 10 else digits
+    persist_serverless_otp(
+        [clean_phone, last10, target_email],
+        code=code,
+        shop_id=user.get("shop_id") if user else None,
+    )
 
     send_otp_email(target_email, code, recipient_name)
     masked = mask_email(target_email)
@@ -507,33 +570,16 @@ def login_endpoint(request: Request, payload: LoginPayload):
     
     if payload.otp and payload.otp.strip():
         submitted_otp = payload.otp.strip()
-        matched = False
         user_phone = user.get("phone") or ""
         user_email = (user.get("email") or "").lower()
         digits = "".join(c for c in user_phone if c.isdigit())
         last10 = digits[-10:] if len(digits) >= 10 else digits
-        now = time.time()
-        
-        # Check against all possible keys under which the OTP might have been registered
         candidate_keys = [user_phone, last10, user_email, raw_identifier, clean_identifier]
-        for key in candidate_keys:
-            if key and key in ACTIVE_OTPS:
-                entry = ACTIVE_OTPS[key]
-                if entry.get("code") == submitted_otp:
-                    if now - entry.get("created_at", now) <= 600:
-                        matched = True
-                        break
-        
-        if not matched:
+        if not verify_serverless_otp(candidate_keys, submitted_otp):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired verification code.",
             )
-        
-        # Invalidate OTP after successful consumption
-        for key in candidate_keys:
-            if key:
-                ACTIVE_OTPS.pop(key, None)
     else:
         # Password-based step (or initial 2FA credential check)
         if not payload.password:
@@ -549,18 +595,15 @@ def login_endpoint(request: Request, payload: LoginPayload):
 
         # Generate and dispatch 2FA OTP code to registered email
         code = f"{random.randint(100000, 999999)}"
-        now = time.time()
         user_email = (user.get("email") or "").lower()
         user_phone = user.get("phone") or ""
-        if user_email:
-            ACTIVE_OTPS[user_email] = {"code": code, "phone": user_phone, "created_at": now}
-        if user_phone:
-            ACTIVE_OTPS[user_phone] = {"code": code, "email": user_email, "created_at": now}
         digits = "".join(c for c in user_phone if c.isdigit())
-        if len(digits) >= 10:
-            ACTIVE_OTPS[digits[-10:]] = {"code": code, "email": user_email, "created_at": now}
-        ACTIVE_OTPS[clean_identifier] = {"code": code, "email": user_email, "created_at": now}
-        ACTIVE_OTPS[raw_identifier] = {"code": code, "email": user_email, "created_at": now}
+        last10 = digits[-10:] if len(digits) >= 10 else digits
+        persist_serverless_otp(
+            [user_email, user_phone, last10, clean_identifier, raw_identifier],
+            code=code,
+            shop_id=user.get("shop_id"),
+        )
         send_otp_email(user_email, code, user.get("name") or "Shop Owner")
         masked = mask_email(user_email)
         return AuthResponse(
