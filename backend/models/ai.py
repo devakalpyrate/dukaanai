@@ -310,57 +310,103 @@ class GroqLLMClient:
         if not raw:
             return None
 
+        HINDI_NUMBERS = {
+            'एक': 1, 'दो': 2, 'तीन': 3, 'चार': 4, 'पाँच': 5, 'पांच': 5, 'छह': 6, 'सात': 7, 'आठ': 8, 'नौ': 9, 'दस': 10,
+            'ग्यारह': 11, 'बारह': 12, 'तेरह': 13, 'चौदह': 14, 'पंद्रह': 15, 'सोलह': 16, 'सत्रह': 17, 'अठारह': 18, 'उन्नीस': 19, 'बीस': 20,
+            'पच्चीस': 25, 'तीस': 30, 'पैंतीस': 35, 'चालीस': 40, 'पैंतालीस': 45, 'पचास': 50, 'साठ': 60, 'सत्तर': 70, 'अस्सी': 80, 'नब्बे': 90,
+            'सौ': 100, 'हज़ार': 1000, 'हजार': 1000, 'लाख': 100000, 'करोड़': 10000000,
+            # Hinglish
+            'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'paanch': 5, 'panch': 5, 'chhe': 6, 'saat': 7, 'aath': 8, 'nau': 9, 'das': 10, 'dus': 10,
+            'gyarah': 11, 'barah': 12, 'pandrah': 15, 'bees': 20, 'pachees': 25, 'tees': 30, 'chalis': 40, 'pachas': 50, 'pachaas': 50,
+            'sau': 100, 'hazar': 1000, 'hazaar': 1000, 'lakh': 100000
+        }
+
+        STOPWORDS = {
+            'अच्छा', 'मतलब', 'नाम', 'का', 'के', 'पर', 'पे', 'उधार', 'जमा', 'रुपये', 'रुपया', 'पैसा', 'पैसे',
+            'लिखो', 'लिख', 'दो', 'दीजिए', 'खाता', 'खाते', 'में', 'aur', 'and', 'the', 'ek', 'naya', 'kisi', 'vyakti',
+            'person', 'customer', 'grahak', 'karo', 'kar', 'do', 'add', 'please'
+        }
+
         def _parse_amount(s: str) -> Optional[float]:
-            # Matches numbers with commas e.g. 10,000 or 1,50,000 or plain 500
-            m = re.search(r'(?:₹|rs\.?|rupaye|inr)?\s*(\b\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\b\d+(?:\.\d+)?)\b', s)
+            # Normalize Devanagari numerals
+            s = s.translate(str.maketrans('०१२३४५६७८९', '0123456789'))
+
+            # Direct digits with commas or units
+            m = re.search(r'(?:₹|rs\.?|rupaye|रुपये|रुपया)?\s*(\b\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\b\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye|रुपये|रुपया)?\b', s, re.I)
             if m:
                 try:
                     val = float(m.group(1).replace(',', ''))
                     if val > 0:
+                        m_mult = re.search(rf'{re.escape(m.group(0))}\s*(?:k|hazar|hazaar|हजार|हज़ार|lakh|लाख)', s, re.I)
+                        if m_mult:
+                            word = m_mult.group(0).lower()
+                            if any(k in word for k in ['k', 'hazar', 'hazaar', 'हजार', 'हज़ार']):
+                                return val * 1000.0
+                            if any(k in word for k in ['lakh', 'लाख']):
+                                return val * 100000.0
                         return val
                 except ValueError:
                     pass
-            m_k = re.search(r'(\d+(?:\.\d+)?)\s*k\b', s)
-            if m_k:
-                return float(m_k.group(1)) * 1000.0
-            m_hz = re.search(r'(\d+(?:\.\d+)?)\s*(?:hazar|hazaar)\b', s)
-            if m_hz:
-                return float(m_hz.group(1)) * 1000.0
-            m_lakh = re.search(r'(\d+(?:\.\d+)?)\s*lakh\b', s)
-            if m_lakh:
-                return float(m_lakh.group(1)) * 100000.0
-            word_map = {'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'paanch': 5, 'panch': 5, 'dus': 10, 'das': 10, 'bees': 20, 'pachas': 50, 'pachaas': 50, 'sau': 100}
-            for w, num in word_map.items():
-                if f'{w} hazaar' in s or f'{w} hazar' in s:
+
+            # Devanagari & Hindi words e.g. 'पाँच हज़ार' or 'पांच हजार' or 'दस लाख'
+            words = s.split()
+            for i, w in enumerate(words):
+                if w in HINDI_NUMBERS:
+                    base_val = HINDI_NUMBERS[w]
+                    if i + 1 < len(words):
+                        next_w = words[i+1]
+                        if next_w in ('हज़ार', 'हजार', 'hazar', 'hazaar'):
+                            return float(base_val * 1000)
+                        elif next_w in ('लाख', 'lakh'):
+                            return float(base_val * 100000)
+                        elif next_w in ('सौ', 'sau'):
+                            return float(base_val * 100)
+                    if base_val >= 100:
+                        return float(base_val)
+
+            for w, num in HINDI_NUMBERS.items():
+                if f"{w} हज़ार" in s or f"{w} हजार" in s or f"{w} hazar" in s or f"{w} hazaar" in s:
                     return float(num * 1000.0)
-                if f'{w} sau' in s:
+                if f"{w} लाख" in s or f"{w} lakh" in s:
+                    return float(num * 100000.0)
+                if f"{w} सौ" in s or f"{w} sau" in s:
                     return float(num * 100.0)
+
             return None
 
         def _extract_customer(s: str, default: str = "Customer") -> str:
-            # Check generic indicators first
-            for gen in ['for a person', 'a person', 'someone', 'ek aadmi', 'kisi ka', 'kisi ko', 'grahak', 'customer', 'person', 'ek vyakti']:
-                if gen in s:
-                    return default
-            # Check for patterns like "for Ramesh" or "to Suresh"
-            m_for = re.search(r'(?:for|to|of)\s+([a-zA-Z\u0900-\u097F]+)', s, re.I)
+            # 1. High-confidence explicit name markers: "X के नाम पर", "X के नाम पे", "X के खाते में"
+            m_naam_matches = list(re.finditer(r'([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)\s+(?:के\s+नाम\s+(?:पर|पे)|के\s+खाते\s+में)', s))
+            if m_naam_matches:
+                for m in reversed(m_naam_matches):
+                    cand = m.group(1).strip()
+                    cand_words = [w for w in cand.split() if w.lower() not in STOPWORDS and w not in HINDI_NUMBERS]
+                    if cand_words:
+                        return ' '.join(cand_words).title()
+
+            # 2. Check for "for Ramesh" or "to Suresh"
+            m_for = re.search(r'(?:for|to|of)\s+([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)', s, re.I)
             if m_for:
                 cand = m_for.group(1).strip()
-                if cand.lower() not in ['a', 'the', 'udhaar', 'credit', 'payment', 'cash', 'money', 'someone', 'person', 'vyakti', 'aadmi']:
-                    return cand.capitalize()
-            # Check for "Ramesh ka/ko/ke/se/ne"
-            m_ka = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ka|ko|ke|se|ne)\b', s, re.I)
-            if m_ka:
-                cand = m_ka.group(1).strip()
-                if cand.lower() not in ['a', 'the', 'udhaar', 'credit', 'payment', 'cash', 'rupaye', 'rs', 'inr', 'kisi', 'ek', 'naya']:
-                    return cand.capitalize()
+                cand_words = [w for w in cand.split() if w.lower() not in STOPWORDS and w not in HINDI_NUMBERS]
+                if cand_words:
+                    return ' '.join(cand_words).title()
+
+            # 3. Check for "Ramesh ka/ko/ke/se/ne" or "रमेश का/को/के/से/ने"
+            m_ka_matches = list(re.finditer(r'([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)\s+(?:ka|ko|ke|se|ne|का|को|के|से|ने)\b', s, re.I))
+            for m in reversed(m_ka_matches):
+                cand = m.group(1).strip()
+                cand_words = [w for w in cand.split() if w.lower() not in STOPWORDS and w not in HINDI_NUMBERS]
+                if cand_words:
+                    return ' '.join(cand_words).title()
+
             return default
 
         # 1. Udhaar / Credit Transaction
-        is_credit = any(k in lower for k in ["udhaar", "udhar", "credit", "baki", "baaki", "baaqi", "khat", "likh", "likho"])
-        if is_credit or ("add" in lower and any(c in lower for c in ["person", "grahak", "customer", "₹", "rs", "rupaye"])):
-            amt = _parse_amount(lower)
-            cust = _extract_customer(lower, default="Customer")
+        is_credit = any(k in lower for k in ["udhaar", "udhar", "credit", "baki", "baaki", "baaqi", "khat", "likh", "likho", "उधार", "बाकी", "लिख", "लिखो", "खाता", "खाते"])
+        if is_credit or ("add" in lower and any(c in lower for c in ["person", "grahak", "customer", "₹", "rs", "rupaye", "रुपये"])):
+            amt = _parse_amount(raw)
+            cust = _extract_customer(raw, default="Customer")
             if amt:
                 disp_val = f"{int(amt) if amt.is_integer() else amt:,}"
                 if cust in ("Customer", "Grahak"):
@@ -386,10 +432,10 @@ class GroqLLMClient:
                 )
 
         # 2. Jama / Debit / Payment Transaction
-        is_payment = any(k in lower for k in ["jama", "payment", "paid", "diye", "diya", "chuka", "vasool", "vasooli", "received", "aaye", "aaya", "bheja"])
+        is_payment = any(k in lower for k in ["jama", "payment", "paid", "diye", "diya", "chuka", "vasool", "vasooli", "received", "aaye", "aaya", "bheja", "जमा", "पेमेंट", "दिए", "दिया", "चुकाया", "प्राप्त"])
         if is_payment:
-            amt = _parse_amount(lower)
-            cust = _extract_customer(lower, default="Customer")
+            amt = _parse_amount(raw)
+            cust = _extract_customer(raw, default="Customer")
             if amt:
                 disp_val = f"{int(amt) if amt.is_integer() else amt:,}"
                 if cust in ("Customer", "Grahak"):
