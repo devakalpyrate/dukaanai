@@ -207,18 +207,11 @@ class GroqLLMClient:
                 clarification_question="Koi instruction nahi mila. Kripya dobara bolein.",
             )
 
-        # 1. Local-First Fast Path: Match high-confidence Kirana intents in <1ms without network latency
-        instant_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
-        if instant_res:
-            logger.info("Instantly resolved intent via smart offline Kirana engine: %s", instant_res.action)
-            return instant_res
-
-        # 2. Sarvam AI Primary Path (Indian Multilingual Expert: Odia, Hindi, Tamil, etc.)
+        # 1. Sarvam AI Primary Path (Indian Multilingual 22+ Languages Expert: Odia, Hindi, Tamil, Telugu, etc.)
         sarvam_key = os.getenv("SARVAM_API_KEY", "")
         if sarvam_key and sarvam_key != "your_sarvam_api_key_here":
             try:
-                from sarvamai import SarvamAI
-                sarvam_client = SarvamAI(api_subscription_key=sarvam_key)
+                import httpx
                 system_instruction = SYSTEM_PROMPT + "\nCRITICAL: You MUST respond with ONLY valid JSON conforming to the schema and nothing else. No markdown, no conversational filler."
                 sarvam_messages = [{"role": "system", "content": system_instruction}]
                 if shop_id:
@@ -227,37 +220,55 @@ class GroqLLMClient:
                     sarvam_messages.append({"role": "system", "content": f"Prior context: {context}"})
                 sarvam_messages.append({"role": "user", "content": raw_text})
 
-                sarvam_resp = sarvam_client.chat.completions(
-                    model="sarvam-105b-conversations",
-                    messages=sarvam_messages,
-                    temperature=0.1,
-                    max_tokens=500,
+                resp = httpx.post(
+                    "https://api.sarvam.ai/v1/chat/completions",
+                    headers={
+                        "api-subscription-key": sarvam_key,
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "sarvam-105b-conversations",
+                        "messages": sarvam_messages,
+                        "temperature": 0.1,
+                        "max_tokens": 500,
+                    },
+                    timeout=10.0,
                 )
-                raw_content = sarvam_resp.choices[0].message.content or "{}"
-                clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_content.strip(), flags=re.DOTALL).strip()
-                parsed_json = json.loads(clean_json)
+                if resp.status_code == 200:
+                    resp_data = resp.json()
+                    raw_content = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                    clean_json = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw_content.strip(), flags=re.DOTALL).strip()
+                    parsed_json = json.loads(clean_json)
 
-                parsed_json["original_text"] = raw_text
-                if not parsed_json.get("normalized_text"):
-                    parsed_json["normalized_text"] = raw_text
+                    parsed_json["original_text"] = raw_text
+                    if not parsed_json.get("normalized_text"):
+                        parsed_json["normalized_text"] = raw_text
 
-                for field in ("conversational_response", "clarification_question"):
-                    val = parsed_json.get(field)
-                    if isinstance(val, str):
-                        val = re.sub(r'(?:in|for|from)?\s*shop\s*(?:id)?\s*[:=]?\s*\d+', 'aapki dukaan par', val, flags=re.IGNORECASE)
-                        parsed_json[field] = re.sub(r'shop_id\s*[:=]?\s*\d+', '', val, flags=re.IGNORECASE).strip()
+                    for field in ("conversational_response", "clarification_question"):
+                        val = parsed_json.get(field)
+                        if isinstance(val, str):
+                            val = re.sub(r'(?:in|for|from)?\s*shop\s*(?:id)?\s*[:=]?\s*\d+', 'aapki dukaan par', val, flags=re.IGNORECASE)
+                            parsed_json[field] = re.sub(r'shop_id\s*[:=]?\s*\d+', '', val, flags=re.IGNORECASE).strip()
 
-                structured = CanonicalIntentContract.model_validate(parsed_json)
-                if structured.intent not in VALID_INTENTS:
-                    structured.intent = "unknown"
+                    structured = CanonicalIntentContract.model_validate(parsed_json)
+                    if structured.intent not in VALID_INTENTS:
+                        structured.intent = "unknown"
 
-                if shop_id and "shop_id" not in structured.parameters:
-                    structured.parameters["shop_id"] = shop_id
+                    if shop_id and "shop_id" not in structured.parameters:
+                        structured.parameters["shop_id"] = shop_id
 
-                logger.info("Successfully resolved intent via Sarvam AI (Odia/Indian Multilingual): %s", structured.action)
-                return structured
+                    logger.info("Successfully resolved intent via Sarvam AI (Indian Multilingual): %s for customer: %s, amount: %s", structured.action, structured.parameters.get("customer_name"), structured.parameters.get("amount"))
+                    return structured
+                else:
+                    logger.warning("Sarvam AI HTTP status %s: %s", resp.status_code, resp.text[:200])
             except Exception as sarvam_err:
-                logger.warning("Sarvam AI primary call failed, falling back to Groq: %s", sarvam_err)
+                logger.warning("Sarvam AI primary call failed, falling back to smart Kirana engine: %s", sarvam_err)
+
+        # 2. Resilient Smart Offline Kirana Path (Fallback if Sarvam is unreachable or offline)
+        instant_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
+        if instant_res:
+            logger.info("Resolved intent via resilient offline Kirana engine: %s", instant_res.action)
+            return instant_res
 
         # 3. Fallback Remote LLM Path (Groq): Only invoked if Sarvam is unavailable or unmapped
         messages = [
@@ -615,8 +626,7 @@ def generate_conversational_response(
     sarvam_key = os.getenv("SARVAM_API_KEY", "")
     if sarvam_key and sarvam_key != "your_sarvam_api_key_here":
         try:
-            from sarvamai import SarvamAI
-            client = SarvamAI(api_subscription_key=sarvam_key)
+            import httpx
             cust = details.get("customer", "")
             amt = details.get("amount", "")
             bal = details.get("balance", "")
@@ -630,16 +640,26 @@ def generate_conversational_response(
                 f"Keep it to ONE short natural sentence. Do NOT use robot boilerplate. Output ONLY the response sentence."
             )
 
-            resp = client.chat.completions(
-                model="sarvam-105b-conversations",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=100,
+            resp = httpx.post(
+                "https://api.sarvam.ai/v1/chat/completions",
+                headers={
+                    "api-subscription-key": sarvam_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": "sarvam-105b-conversations",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.2,
+                    "max_tokens": 100,
+                },
+                timeout=8.0,
             )
-            content = resp.choices[0].message.content or ""
-            clean_reply = content.strip().replace('"', '').replace('`', '')
-            if clean_reply:
-                return clean_reply
+            if resp.status_code == 200:
+                resp_data = resp.json()
+                content = resp_data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                clean_reply = content.strip().replace('"', '').replace('`', '')
+                if clean_reply:
+                    return clean_reply
         except Exception as err:
             logger.warning("Failed to generate dynamic Sarvam conversational response: %s", err)
 
