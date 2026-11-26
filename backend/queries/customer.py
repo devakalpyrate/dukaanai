@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import Any
 from backend.database.supabase_client import get_supabase, get_next_id
+from backend.security.sql_guard import sanitize_search_term
 
 def create_customer(
     shop_id: int,
@@ -37,7 +38,9 @@ def search_customers(
     search_term: str,
 ) -> list[dict[str, Any]]:
     client = get_supabase()
-    term = search_term.strip()
+    term = sanitize_search_term(search_term)
+    if not term:
+        return []
     res = client.table("customers").select("id, shop_id, name, phone").eq("shop_id", shop_id).or_(f"name.ilike.%{term}%,phone.ilike.%{term}%").order("name").order("id").execute()
     return res.data or []
 

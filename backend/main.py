@@ -1,4 +1,5 @@
 import asyncio
+import json
 import random
 import time
 import uuid
@@ -61,7 +62,7 @@ from backend.security.exceptions import (
     validation_exception_handler,
 )
 from backend.security.logger import StructuredLogFormatter
-from backend.security.middleware import SecurityHeadersMiddleware
+from backend.security.middleware import SecurityHeadersMiddleware, SQLInjectionGuardMiddleware
 from backend.security.rate_limiter import get_rate_limiter
 
 log_handler = logging.StreamHandler()
@@ -114,6 +115,7 @@ app = FastAPI(
 )
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SQLInjectionGuardMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -246,10 +248,27 @@ class LoginPayload(BaseModel):
     identifier: Optional[str] = Field(default="", max_length=120)
     password: Optional[str] = Field(default="", max_length=128)
     otp: Optional[str] = Field(default=None, max_length=10)
+    restore_account: Optional[bool] = False
 
 class SendOtpPayload(BaseModel):
-    phone: str = Field(..., min_length=5, max_length=20)
+    phone: Optional[str] = Field(default="", max_length=30)
     email: Optional[str] = Field(default="", max_length=120)
+    identifier: Optional[str] = Field(default="", max_length=120)
+    action: Optional[str] = Field(default="login", max_length=30)
+
+class VerifyOtpPayload(BaseModel):
+    identifier: str = Field(..., min_length=3, max_length=120)
+    otp: str = Field(..., min_length=4, max_length=10)
+
+class ResetPasswordPayload(BaseModel):
+    identifier: str = Field(..., min_length=3, max_length=120)
+    otp: str = Field(..., min_length=4, max_length=10)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+class RestoreAccountPayload(BaseModel):
+    identifier: str = Field(..., min_length=3, max_length=120)
+    otp: Optional[str] = Field(default=None, max_length=10)
+    password: Optional[str] = Field(default=None, max_length=128)
 
 class SettingsPayload(BaseModel):
     upi_id: Optional[str] = Field(default="", max_length=100)
@@ -273,6 +292,8 @@ class NotificationBatchPayload(BaseModel):
 class AuthResponse(BaseModel):
     success: bool
     requires_otp: Optional[bool] = False
+    requires_restore: Optional[bool] = False
+    grace_period_days_left: Optional[int] = None
     message: Optional[str] = ""
     masked_email: Optional[str] = ""
     access_token: Optional[str] = ""
@@ -283,10 +304,13 @@ class AuthResponse(BaseModel):
     shop_id: Optional[int] = 0
     shop_name: Optional[str] = ""
     shop_address: Optional[str] = ""
+    language: Optional[str] = "en"
+    theme: Optional[str] = "dark"
+    settings: Optional[Dict[str, Any]] = None
 
 ACTIVE_OTPS: Dict[str, Dict[str, Any]] = {}
 
-def persist_serverless_otp(keys: list[str], code: str, shop_id: Any = None, expires_in: int = 600):
+def persist_serverless_otp(keys: list[str], code: str, shop_id: Any = None, user_id: Any = None, expires_in: int = 600):
     now = time.time()
     for k in keys:
         if k:
@@ -301,13 +325,21 @@ def persist_serverless_otp(keys: list[str], code: str, shop_id: Any = None, expi
             "type": "system_otp",
             "is_read": False,
         }
-        if shop_id:
-            payload["shop_id"] = int(shop_id) if str(shop_id).isdigit() else None
+        sid = 1000
+        if shop_id and str(shop_id).isdigit():
+            sid = int(shop_id)
+        payload["shop_id"] = sid
+        
+        uid = 1000
+        if user_id and str(user_id).isdigit():
+            uid = int(user_id)
+        payload["user_id"] = uid
+
         sb.table("notifications").insert(payload).execute()
     except Exception as exc:
         logger.warning("Could not persist serverless OTP to DB: %s", exc)
 
-def verify_serverless_otp(candidate_keys: list[str], submitted_otp: str) -> bool:
+def verify_serverless_otp(candidate_keys: list[str], submitted_otp: str, consume: bool = True) -> bool:
     now = time.time()
     clean_submitted = submitted_otp.strip()
     for key in candidate_keys:
@@ -315,9 +347,10 @@ def verify_serverless_otp(candidate_keys: list[str], submitted_otp: str) -> bool
             entry = ACTIVE_OTPS[key]
             if str(entry.get("code")).strip() == clean_submitted:
                 if now - entry.get("created_at", now) <= 600:
-                    for k in candidate_keys:
-                        if k:
-                            ACTIVE_OTPS.pop(k, None)
+                    if consume:
+                        for k in candidate_keys:
+                            if k:
+                                ACTIVE_OTPS.pop(k, None)
                     return True
     try:
         from backend.database.supabase_client import get_supabase
@@ -337,13 +370,14 @@ def verify_serverless_otp(candidate_keys: list[str], submitted_otp: str) -> bool
             except Exception:
                 continue
         if matched_id:
-            try:
-                sb.table("notifications").delete().eq("id", matched_id).execute()
-            except Exception:
-                pass
-            for k in candidate_keys:
-                if k:
-                    ACTIVE_OTPS.pop(k, None)
+            if consume:
+                try:
+                    sb.table("notifications").delete().eq("id", matched_id).execute()
+                except Exception:
+                    pass
+                for k in candidate_keys:
+                    if k:
+                        ACTIVE_OTPS.pop(k, None)
             return True
     except Exception as exc:
         logger.warning("Error checking serverless OTP in DB: %s", exc)
@@ -434,8 +468,18 @@ def get_current_shop(
 )
 def send_otp_endpoint(request: Request, payload: SendOtpPayload):
     enforce_rate_limit(request, category="login")
-    clean_phone = payload.phone.strip()
+    raw_id = (payload.identifier or payload.phone or payload.email or "").strip()
+    clean_phone = (payload.phone or "").strip()
     clean_email = (payload.email or "").strip().lower()
+
+    if not clean_email and not clean_phone and raw_id:
+        if "@" in raw_id:
+            clean_email = raw_id.lower()
+        else:
+            clean_phone = raw_id
+    elif not clean_phone and clean_email and "@" not in clean_email:
+        clean_phone = clean_email
+        clean_email = ""
 
     user = None
     target_email = clean_email
@@ -444,33 +488,61 @@ def send_otp_endpoint(request: Request, payload: SendOtpPayload):
     if not target_email:
         user = user_queries.get_user_credentials_by_email_or_phone(clean_phone)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="No account registered with this mobile number. Please register first.",
-            )
-        target_email = (user.get("email") or "").strip().lower()
-        recipient_name = user.get("name") or "Shop Owner"
-        if not target_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No registered email address found for this account. Please use password login.",
-            )
+            if payload.action == "register":
+                user = None
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="No account registered with this mobile number. Please register first.",
+                )
+        if user:
+            target_email = (user.get("email") or "").strip().lower()
+            recipient_name = user.get("name") or "Shop Owner"
+            if not target_email and payload.action != "register":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="No registered email address found for this account. Please use password login.",
+                )
     else:
         existing = user_queries.get_user_credentials_by_email_or_phone(target_email) or (
             user_queries.get_user_credentials_by_email_or_phone(clean_phone) if clean_phone else None
         )
+        if payload.action == "register":
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="An account is already registered with this email or mobile. Please log in.",
+                )
+        elif not existing and payload.action != "restore":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account registered with this email address. Please register first.",
+            )
         if existing:
             user = existing
             recipient_name = existing.get("name") or "Shop Owner"
+            if not clean_phone and existing.get("phone"):
+                clean_phone = existing.get("phone")
 
     code = f"{random.randint(100000, 999999)}"
     digits = "".join(c for c in clean_phone if c.isdigit())
     last10 = digits[-10:] if len(digits) >= 10 else digits
     identifiers = [k for k in [clean_phone, last10, target_email] if k]
+    user_shop_id = 1000
+    if user and user.get("id"):
+        try:
+            shops = shop_queries.get_shops_by_owner(user["id"])
+            if shops:
+                user_shop_id = shops[0]["id"]
+        except Exception:
+            pass
+
+    user_id_val = user.get("id") if user else 1000
     persist_serverless_otp(
         identifiers,
         code=code,
-        shop_id=user.get("shop_id") if user else None,
+        shop_id=user_shop_id,
+        user_id=user_id_val,
     )
 
     send_otp_email(target_email, code, recipient_name)
@@ -510,15 +582,10 @@ def register_endpoint(request: Request, payload: RegisterPayload):
 
     if payload.otp:
         submitted_otp = payload.otp.strip()
-        matched = False
-        p_entry = ACTIVE_OTPS.get(clean_phone)
-        e_entry = ACTIVE_OTPS.get(clean_email)
-        if p_entry and p_entry["code"] == submitted_otp:
-            matched = True
-        elif e_entry and e_entry["code"] == submitted_otp:
-            matched = True
-        
-        if not matched:
+        digits = "".join(c for c in clean_phone if c.isdigit())
+        last10 = digits[-10:] if len(digits) >= 10 else digits
+        candidate_keys = [clean_phone, last10, clean_email]
+        if not verify_serverless_otp(candidate_keys, submitted_otp):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired confirmation code (OTP). Please check and try again.",
@@ -668,6 +735,40 @@ def login_endpoint(request: Request, payload: LoginPayload):
         )
     
     user_id = user["id"]
+    deleted_at_val = user.get("deleted_at")
+    if deleted_at_val:
+        try:
+            from datetime import datetime, timezone
+            if isinstance(deleted_at_val, str):
+                del_dt = datetime.fromisoformat(deleted_at_val.replace("Z", "+00:00"))
+            else:
+                del_dt = deleted_at_val
+            days_passed = (datetime.now(timezone.utc) - del_dt).total_seconds() / 86400
+            days_left = max(0, 30 - int(days_passed))
+            if days_passed > 30:
+                raise HTTPException(
+                    status_code=status.HTTP_410_GONE,
+                    detail="This account has been permanently archived after the 30-day grace period.",
+                )
+            if payload.restore_account:
+                user_queries.restore_user(user_id)
+            else:
+                return AuthResponse(
+                    success=True,
+                    requires_restore=True,
+                    grace_period_days_left=days_left,
+                    message=f"Your account was scheduled for deletion ({days_left} days left in grace period). Click 'Restore Account' to recover all transactions and shop data.",
+                    access_token="",
+                    user_id=user_id,
+                    name=user.get("name") or "",
+                    email=user.get("email") or "",
+                    phone=user.get("phone") or "",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("Error evaluating deletion grace period: %s", e)
+
     user_queries.record_user_login(user_id)
     shops = shop_queries.get_shops_by_owner(user_id)
     if not shops:
@@ -682,6 +783,9 @@ def login_endpoint(request: Request, payload: LoginPayload):
         "shop_id": primary_shop["id"],
         "email": user["email"],
     })
+    st = settings_queries.get_settings_by_shop(primary_shop["id"]) or {}
+    user_lang = st.get("language") or "en"
+    user_theme = st.get("theme") or "dark"
     
     return AuthResponse(
         success=True,
@@ -692,7 +796,211 @@ def login_endpoint(request: Request, payload: LoginPayload):
         phone=user.get("phone") or "",
         shop_id=primary_shop["id"],
         shop_name=primary_shop["shop_name"],
+        shop_address=primary_shop.get("address") or st.get("shop_address") or "",
+        language=user_lang,
+        theme=user_theme,
+        settings=st,
+    )
+
+@app.post(
+    "/api/auth/verify-otp",
+    status_code=status.HTTP_200_OK,
+    summary="Verify OTP confirmation code without consuming it",
+)
+def verify_otp_endpoint(request: Request, payload: VerifyOtpPayload):
+    raw_identifier = payload.identifier.strip()
+    clean_identifier = raw_identifier.lower()
+    enforce_rate_limit(request, category="login", user_id=clean_identifier)
+
+    user = user_queries.get_user_credentials_by_email_or_phone(raw_identifier)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this mobile number or email.",
+        )
+
+    submitted_otp = payload.otp.strip()
+    user_phone = user.get("phone") or ""
+    user_email = (user.get("email") or "").lower()
+    digits = "".join(c for c in user_phone if c.isdigit())
+    last10 = digits[-10:] if len(digits) >= 10 else digits
+    candidate_keys = [user_phone, last10, user_email, raw_identifier, clean_identifier]
+
+    if not verify_serverless_otp(candidate_keys, submitted_otp, consume=False):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
+
+    return {"status": "verified", "message": "OTP verified successfully"}
+
+@app.post(
+    "/api/auth/reset-password",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reset user password using OTP with zero data loss",
+)
+def reset_password_endpoint(request: Request, payload: ResetPasswordPayload):
+    raw_identifier = payload.identifier.strip()
+    clean_identifier = raw_identifier.lower()
+    enforce_rate_limit(request, category="login", user_id=clean_identifier)
+
+    user = user_queries.get_user_credentials_by_email_or_phone(raw_identifier)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this mobile number or email.",
+        )
+
+    submitted_otp = payload.otp.strip()
+    user_phone = user.get("phone") or ""
+    user_email = (user.get("email") or "").lower()
+    digits = "".join(c for c in user_phone if c.isdigit())
+    last10 = digits[-10:] if len(digits) >= 10 else digits
+    candidate_keys = [user_phone, last10, user_email, raw_identifier, clean_identifier]
+
+    if not verify_serverless_otp(candidate_keys, submitted_otp):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired verification code.",
+        )
+
+    # Hash new password with hardened PBKDF2-SHA256
+    new_hash = hash_password(payload.new_password)
+    user_id = user["id"]
+    
+    # Update password in Supabase users table - all shop, customer, and transaction foreign keys stay 100% intact!
+    user_queries.update_user(user_id, password_hash=new_hash)
+    if user.get("deleted_at"):
+        user_queries.restore_user(user_id)
+
+    user_queries.record_user_login(user_id)
+    shops = shop_queries.get_shops_by_owner(user_id)
+    if not shops:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No shop found for this account.",
+        )
+
+    primary_shop = shops[0]
+    token = create_access_token({
+        "sub": user_id,
+        "shop_id": primary_shop["id"],
+        "email": user["email"],
+    })
+
+    return AuthResponse(
+        success=True,
+        access_token=token,
+        user_id=user_id,
+        name=user["name"],
+        email=user["email"],
+        phone=user.get("phone") or "",
+        shop_id=primary_shop["id"],
+        shop_name=primary_shop["shop_name"],
         shop_address=primary_shop.get("address") or "",
+        message="Password updated successfully! Welcome back to your DukaanAI store.",
+    )
+
+@app.post(
+    "/api/auth/restore-account",
+    response_model=AuthResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Restore an accidentally deleted merchant account and all historical transactions",
+)
+def restore_account_endpoint(request: Request, payload: RestoreAccountPayload):
+    raw_identifier = payload.identifier.strip()
+    clean_identifier = raw_identifier.lower()
+    enforce_rate_limit(request, category="login", user_id=clean_identifier)
+
+    user = user_queries.get_user_credentials_by_email_or_phone(raw_identifier)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this mobile number or email.",
+        )
+
+    # Verify via OTP or Password
+    user_phone = user.get("phone") or ""
+    user_email = (user.get("email") or "").lower()
+    verified = False
+    
+    if payload.otp and payload.otp.strip():
+        digits = "".join(c for c in user_phone if c.isdigit())
+        last10 = digits[-10:] if len(digits) >= 10 else digits
+        candidate_keys = [user_phone, last10, user_email, raw_identifier, clean_identifier]
+        if verify_serverless_otp(candidate_keys, payload.otp.strip()):
+            verified = True
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired verification code.",
+            )
+    elif payload.password:
+        if verify_password(payload.password, user["password"]):
+            verified = True
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid password.",
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code or password is required to restore account.",
+        )
+
+    user_id = user["id"]
+    deleted_at_val = user.get("deleted_at")
+    if deleted_at_val:
+        from datetime import datetime, timezone
+        if isinstance(deleted_at_val, str):
+            del_dt = datetime.fromisoformat(deleted_at_val.replace("Z", "+00:00"))
+        else:
+            del_dt = deleted_at_val
+        days_passed = (datetime.now(timezone.utc) - del_dt).total_seconds() / 86400
+        if days_passed > 30:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE,
+                detail="This account has been permanently archived after the 30-day grace period.",
+            )
+
+    # Restore user
+    user_queries.restore_user(user_id)
+    user_queries.record_user_login(user_id)
+
+    shops = shop_queries.get_shops_by_owner(user_id)
+    if not shops:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No shop found for this account.",
+        )
+
+    primary_shop = shops[0]
+    token = create_access_token({
+        "sub": user_id,
+        "shop_id": primary_shop["id"],
+        "email": user["email"],
+    })
+
+    st = settings_queries.get_settings_by_shop(primary_shop["id"]) or {}
+    user_lang = st.get("language") or "en"
+    user_theme = st.get("theme") or "dark"
+
+    return AuthResponse(
+        success=True,
+        access_token=token,
+        user_id=user_id,
+        name=user["name"],
+        email=user["email"],
+        phone=user.get("phone") or "",
+        shop_id=primary_shop["id"],
+        shop_name=primary_shop["shop_name"],
+        shop_address=primary_shop.get("address") or st.get("shop_address") or "",
+        language=user_lang,
+        theme=user_theme,
+        settings=st,
+        message="Account and all transaction history successfully restored! Welcome back.",
     )
 
 @app.get(
@@ -798,7 +1106,18 @@ def get_notifications_endpoint(
     enforce_rate_limit(request, category="lookup", user_id=str(current_shop["user_id"]))
     shop_id = current_shop["shop_id"]
     notifs = notification_queries.get_notifications_by_shop(shop_id)
-    return {"success": True, "notifications": notifs or []}
+    internal_types = {"system_otp", "auth_event", "system_internal"}
+    safe_notifs = [
+        n for n in (notifs or [])
+        if n.get("type") not in internal_types
+        and str(n.get("title", "")).strip().lower() != "system_otp"
+        and not (
+            isinstance(n.get("message"), str)
+            and '"keys"' in n.get("message")
+            and '"code"' in n.get("message")
+        )
+    ]
+    return {"success": True, "notifications": safe_notifs}
 
 @app.post(
     "/api/notifications",
@@ -917,29 +1236,16 @@ async def delete_account_endpoint(
         except Exception as mail_err:
             logger.error("Failed to send account deletion statement email: %s", mail_err)
 
-    # Comprehensive cascading deletion across all relational tables
-    sb = get_supabase()
-    for tbl, col, val in [
-        ("transactions", "shop_id", shop_id),
-        ("customers", "shop_id", shop_id),
-        ("inventory", "shop_id", shop_id),
-        ("suppliers", "shop_id", shop_id),
-        ("notifications", "shop_id", shop_id),
-        ("settings", "shop_id", shop_id),
-        ("shops", "id", shop_id),
-        ("users", "id", user_id),
-    ]:
-        try:
-            sb.table(tbl).delete().eq(col, val).execute()
-        except Exception as del_err:
-            logger.warning("Cascading deletion warning on table %s: %s", tbl, del_err)
+    # Safe Soft Deletion with 30-Day Grace Period
+    user_queries.soft_delete_user(user_id)
 
-    logger.info("Permanently deleted user %d (shop %d). Final statement dispatched to %s", user_id, shop_id, user_email)
+    logger.info("Account marked as soft-deleted for user %d (shop %d) with 30-day grace period. Statement emailed to %s", user_id, shop_id, user_email)
 
     return {
         "success": True,
-        "message": "Account and all store data permanently deleted. A final transaction statement has been emailed to you.",
+        "message": "Account scheduled for deletion with a 30-day grace period. A complete backup and transaction statement has been emailed to you. You can restore your account and all data anytime within 30 days simply by logging in.",
         "archived_transactions": len(transactions),
+        "grace_period_days": 30,
     }
 
 @app.post(
@@ -953,6 +1259,7 @@ def logout_endpoint(
     user_id = current_shop["user_id"]
     shop_id = current_shop["shop_id"]
     try:
+        from backend.database.supabase_client import get_supabase
         sb = get_supabase()
         now_ts = str(int(time.time()))
         sb.table("notifications").insert({

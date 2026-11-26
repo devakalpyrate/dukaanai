@@ -1,10 +1,48 @@
 import logging
 import uuid
+from urllib.parse import unquote
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
+from backend.security.sql_guard import detect_sql_injection
 
 logger = logging.getLogger("dukaanai.security")
+
+class SQLInjectionGuardMiddleware(BaseHTTPMiddleware):
+    """
+    Application-level SQL Injection firewall.
+    Inspects URL query parameters and query string for malicious SQL injection signatures
+    commonly tested by penetration testing tools (SQLMap, Burp Suite, etc.).
+    """
+    async def dispatch(self, request: Request, call_next):
+        raw_query = unquote(request.url.query or "")
+        if raw_query:
+            if detect_sql_injection(raw_query):
+                ip = request.client.host if request.client else "unknown"
+                logger.warning(
+                    "Blocked SQL Injection attempt from IP %s on URL %s",
+                    ip,
+                    request.url.path
+                )
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Request rejected due to potentially unsafe input parameters."}
+                )
+
+        for param_name, param_val in request.query_params.items():
+            if detect_sql_injection(param_val):
+                ip = request.client.host if request.client else "unknown"
+                logger.warning(
+                    "Blocked SQL Injection attempt in parameter '%s' from IP %s",
+                    param_name,
+                    ip
+                )
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "Request rejected due to potentially unsafe input parameters."}
+                )
+
+        return await call_next(request)
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):

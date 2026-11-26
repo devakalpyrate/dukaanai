@@ -16,7 +16,8 @@ window.DukaanPlansConfig = {
     statusBadge: "Active Now",
     price: "₹0",
     period: "Free forever",
-    description: "All the essential features to run your store digitally with voice commands.",
+    description:
+      "All the essential features to run your store digitally with voice commands.",
     voiceLimit: "25 commands / day",
     features: [
       "25 Sarvam AI Voice Commands / Day",
@@ -24,11 +25,11 @@ window.DukaanPlansConfig = {
       "Customer Khata & Balance Tracking",
       "Daily & Monthly Sales Summary Reports",
       "Live Mandi Rates & Prices",
-      "Secure Cloud Backup & Safety"
+      "Secure Cloud Backup & Safety",
     ],
     buttonText: "Current Plan",
     buttonDisabled: true,
-    isCurrentPlan: true
+    isCurrentPlan: true,
   },
 
   // -------------------------------------------------------------
@@ -42,7 +43,8 @@ window.DukaanPlansConfig = {
     durationDays: 90,
     price: "₹349",
     period: "/ 3 Months",
-    description: "For growing shops needing automated customer reminders and staff sync.",
+    description:
+      "For growing shops needing automated customer reminders and staff sync.",
     voiceLimit: "150 commands / day",
     features: [
       "Everything in Free, plus:",
@@ -50,11 +52,11 @@ window.DukaanPlansConfig = {
       "Automated WhatsApp Payment Links",
       "Multi-Device Staff Sync (Up to 3 Devices)",
       "Priority Mandi Rates & Price Alerts",
-      "Priority WhatsApp Support"
+      "Priority WhatsApp Support",
     ],
     buttonText: "Coming Soon",
     buttonDisabled: true,
-    isCurrentPlan: false
+    isCurrentPlan: false,
   },
 
   // -------------------------------------------------------------
@@ -68,7 +70,8 @@ window.DukaanPlansConfig = {
     durationDays: 365,
     price: "₹999",
     period: "/ 365 Days",
-    description: "For wholesale & retail businesses needing complete peace of mind.",
+    description:
+      "For wholesale & retail businesses needing complete peace of mind.",
     voiceLimit: "Infinite (Fair-use applies)",
     features: [
       "Everything in Free, plus:",
@@ -76,10 +79,10 @@ window.DukaanPlansConfig = {
       "Unlimited Staff & Counter Accounts",
       "Custom Shop Logo & QR Bill Invoices",
       "Full Accounting & Tax Report Export",
-      "Priority Customer Support"
+      "Priority Customer Support",
     ],
     buttonText: "Coming Soon",
     buttonDisabled: true,
-    isCurrentPlan: false
-  }
+    isCurrentPlan: false,
+  },
 };

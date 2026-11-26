@@ -24,8 +24,31 @@ def create_notification(
 
 def get_notifications_by_shop(shop_id: int) -> list[dict[str, Any]]:
     client = get_supabase()
-    res = client.table("notifications").select("id, shop_id, user_id, title, message, type, is_read, created_at").eq("shop_id", shop_id).order("created_at", desc=True).order("id", desc=True).limit(50).execute()
-    return res.data or []
+    res = (
+        client.table("notifications")
+        .select("id, shop_id, user_id, title, message, type, is_read, created_at")
+        .eq("shop_id", shop_id)
+        .neq("type", "system_otp")
+        .neq("type", "auth_event")
+        .neq("title", "system_otp")
+        .order("created_at", desc=True)
+        .order("id", desc=True)
+        .limit(50)
+        .execute()
+    )
+    rows = res.data or []
+    internal_types = {"system_otp", "auth_event", "system_internal"}
+    return [
+        r
+        for r in rows
+        if r.get("type") not in internal_types
+        and str(r.get("title", "")).strip().lower() != "system_otp"
+        and not (
+            isinstance(r.get("message"), str)
+            and '"keys"' in r.get("message")
+            and '"code"' in r.get("message")
+        )
+    ]
 
 def delete_notification(shop_id: int, notification_id: int) -> bool:
     client = get_supabase()

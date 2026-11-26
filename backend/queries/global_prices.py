@@ -1,10 +1,13 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from backend.database.supabase_client import get_supabase
+from backend.security.sql_guard import sanitize_search_term
 
 def get_global_price(item_key: str) -> Optional[Dict[str, Any]]:
     client = get_supabase()
-    cleaned = item_key.strip().lower()
+    cleaned = sanitize_search_term(item_key).lower()
+    if not cleaned:
+        return None
     res = client.table("global_market_prices").select("id, item_key, display_name, price, unit, source, updated_at").eq("item_key", cleaned).limit(1).execute()
     if res.data:
         return res.data[0]

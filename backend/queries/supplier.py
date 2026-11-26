@@ -1,5 +1,6 @@
 from typing import Any, List, Optional
 from backend.database.supabase_client import get_supabase, get_next_id
+from backend.security.sql_guard import sanitize_search_term
 
 def create_supplier(
     shop_id: int,
@@ -32,7 +33,10 @@ def get_supplier_by_id(supplier_id: int, shop_id: int) -> Optional[dict[str, Any
 
 def find_supplier_by_category_or_name(shop_id: int, term: str) -> Optional[dict[str, Any]]:
     client = get_supabase()
-    clean_term = term.strip().lower()
+    clean_term = sanitize_search_term(term).lower()
+    if not clean_term:
+        first_res = client.table("suppliers").select("id, shop_id, name, category, phone, created_at").eq("shop_id", shop_id).order("id").limit(1).execute()
+        return first_res.data[0] if first_res.data else None
     res = client.table("suppliers").select("id, shop_id, name, category, phone, created_at").eq("shop_id", shop_id).or_(f"category.ilike.%{clean_term}%,name.ilike.%{clean_term}%").limit(1).execute()
     if res.data:
         return res.data[0]

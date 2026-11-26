@@ -1,6 +1,7 @@
 from decimal import Decimal
 from typing import Any
 from backend.database.supabase_client import get_supabase, get_next_id
+from backend.security.sql_guard import sanitize_search_term
 
 def create_product(
     shop_id: int,
@@ -59,7 +60,9 @@ def get_products_by_shop(shop_id: int) -> list[dict[str, Any]]:
 
 def search_products(shop_id: int, search_term: str) -> list[dict[str, Any]]:
     client = get_supabase()
-    term = search_term.strip()
+    term = sanitize_search_term(search_term)
+    if not term:
+        return []
     res = client.table("products").select("id, shop_id, name, price, unit").eq("shop_id", shop_id).ilike("name", f"%{term}%").order("name").order("id").execute()
     return res.data or []
 

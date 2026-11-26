@@ -8,17 +8,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DukaanAI - Voice Operating System for Retail</title>
 
+    <!-- Google Fonts for Indian & Global Languages -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+Bengali:wght@400;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700;800;900&family=Noto+Sans+Gujarati:wght@400;600;700&family=Noto+Sans+Kannada:wght@400;600;700&family=Noto+Sans+Malayalam:wght@400;600;700&family=Noto+Sans+Oriya:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;600;700;800&family=Noto+Sans+Telugu:wght@400;600;700&family=Noto+Sans:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      :root {
+        --app-font-family:
+          "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+      }
+      *,
+      body,
+      #root,
+      button,
+      input,
+      select,
+      textarea {
+        font-family: var(--app-font-family) !important;
+      }
+      /* Suppress native Windows/Edge/IE password reveal icons to prevent double-eye duplication */
+      input::-ms-reveal,
+      input::-ms-clear {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+      @keyframes dukaanPulseBadge {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.06);
+          opacity: 0.9;
+        }
+      }
+      @keyframes dukaanFastTrack {
+        0% {
+          transform: translateX(-60%);
+        }
+        100% {
+          transform: translateX(200%);
+        }
+      }
+      #dukaan-app-fast-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 999999;
+        background: #090d14;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        transition:
+          opacity 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+          visibility 0.28s ease;
+      }
+    </style>
+
     <!-- 1. DukaanAI Auth & Session Interceptor -->
-    <script src="/assets/js/auth-session.js?v=bs37"></script>
+    <script src="/assets/js/auth-session.js?v=bs60"></script>
 
     <!-- 2. DukaanAI Plans & Pricing Configuration -->
-    <script src="/assets/js/plans-page.js?v=bs37"></script>
+    <script src="/assets/js/plans-page.js?v=bs60"></script>
 
     <!-- 3. React Main Application Bundle -->
     <script
       type="module"
       crossorigin
-      src="/assets/index-YB33VD4W.js?v=bs37"
+      src="/assets/index-YB33VD4W.js?v=bs67"
     ></script>
     <link
       rel="stylesheet"
@@ -35,12 +99,83 @@
     class="dark"
     style="background-color: #090d14; margin: 0; min-height: 100vh"
   >
+    <!-- Ultra-Fast Sleek Loading Overlay -->
+    <div id="dukaan-app-fast-loader">
+      <div
+        style="
+          width: 60px;
+          height: 60px;
+          border-radius: 18px;
+          background: #ffd026;
+          color: #000000;
+          font-weight: 900;
+          font-size: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 10px 30px rgba(255, 208, 38, 0.35);
+          border: 1.5px solid #e6b800;
+          animation: dukaanPulseBadge 1.2s ease-in-out infinite;
+        "
+      >
+        द
+      </div>
+      <div
+        style="
+          margin-top: 20px;
+          font-weight: 900;
+          font-size: 22px;
+          color: #ffffff;
+          letter-spacing: -0.02em;
+          display: flex;
+          align-items: center;
+          gap: 2px;
+        "
+      >
+        Dukaan<span style="color: #ffd026">AI</span>
+      </div>
+      <div
+        id="dukaan-loader-msg"
+        style="
+          margin-top: 6px;
+          font-size: 11px;
+          font-weight: 700;
+          color: #a1a1aa;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        "
+      >
+        Loading store preferences...
+      </div>
+      <div
+        style="
+          width: 140px;
+          height: 3px;
+          background: rgba(255, 255, 255, 0.08);
+          border-radius: 999px;
+          overflow: hidden;
+          margin-top: 16px;
+        "
+      >
+        <div
+          style="
+            height: 100%;
+            background: #ffd026;
+            width: 45%;
+            border-radius: 999px;
+            animation: dukaanFastTrack 0.75s ease-in-out infinite alternate;
+          "
+        ></div>
+      </div>
+    </div>
+
     <div id="root"></div>
 
     <!-- 5. Modular Runtime Scripts -->
     <script src="/assets/js/scroll-handler.js?v=bs37"></script>
     <script src="/assets/js/voice-spectrum.js?v=bs37"></script>
     <script src="/assets/js/audio-unlocker.js?v=bs37"></script>
+    <script src="/assets/js/recovery-modal.js?v=bs67"></script>
 
     <!-- 6. Windows Toast Notification Container & Engine -->
     <div

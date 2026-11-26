@@ -47,7 +47,7 @@ def get_user_by_phone(phone: str) -> dict[str, Any] | None:
 def get_user_credentials_by_email(email: str) -> dict[str, Any] | None:
     client = get_supabase()
     clean = (email or "").strip().lower()
-    res = client.table("users").select("id, name, email, password, phone").ilike("email", clean).limit(1).execute()
+    res = client.table("users").select("id, name, email, password, phone, deleted_at").ilike("email", clean).limit(1).execute()
     return res.data[0] if res.data else None
 
 def get_user_credentials_by_email_or_phone(identifier: str) -> dict[str, Any] | None:
@@ -58,14 +58,14 @@ def get_user_credentials_by_email_or_phone(identifier: str) -> dict[str, Any] | 
     clean_email = raw.lower()
     
     try:
-        res = client.table("users").select("id, name, email, password, phone").ilike("email", clean_email).limit(1).execute()
+        res = client.table("users").select("id, name, email, password, phone, deleted_at").ilike("email", clean_email).limit(1).execute()
         if res.data:
             return res.data[0]
     except Exception:
         pass
     
     try:
-        res_phone = client.table("users").select("id, name, email, password, phone").eq("phone", raw).limit(1).execute()
+        res_phone = client.table("users").select("id, name, email, password, phone, deleted_at").eq("phone", raw).limit(1).execute()
         if res_phone.data:
             return res_phone.data[0]
     except Exception:
@@ -75,7 +75,7 @@ def get_user_credentials_by_email_or_phone(identifier: str) -> dict[str, Any] | 
     if len(digits) >= 10:
         last10 = digits[-10:]
         try:
-            res_like = client.table("users").select("id, name, email, password, phone").ilike("phone", f"%{last10}").limit(1).execute()
+            res_like = client.table("users").select("id, name, email, password, phone, deleted_at").ilike("phone", f"%{last10}").limit(1).execute()
             if res_like.data:
                 return res_like.data[0]
         except Exception:
@@ -131,6 +131,14 @@ def soft_delete_user(user_id: int) -> bool:
         from datetime import datetime, timezone
         now_iso = datetime.now(timezone.utc).isoformat()
         res = client.table("users").update({"deleted_at": now_iso}).eq("id", user_id).execute()
+        return bool(res.data)
+    except Exception:
+        return False
+
+def restore_user(user_id: int) -> bool:
+    client = get_supabase()
+    try:
+        res = client.table("users").update({"deleted_at": None}).eq("id", user_id).execute()
         return bool(res.data)
     except Exception:
         return False
