@@ -16,7 +16,6 @@ def create_shop(owner_id: int, shop_name: str, address: str | None = None) -> in
     return 0
 
 def get_shop_by_id(shop_id: int) -> dict[str, Any] | None:
-    # Always query fresh from Supabase to prevent cross-account stale state or deleted store ghosting
     client = get_supabase()
     try:
         res = client.table("shops").select("id, owner_id, shop_name, address").eq("id", shop_id).limit(1).execute()

@@ -24,7 +24,6 @@
       opts.title || (opts.type === "error" ? "Error" : "Notification");
     var message = opts.message || opts.text || "";
 
-    // Strictly suppress internal system OTP and auth debug messages
     if (
       opts.type === "system_otp" ||
       opts.type === "auth_event" ||
@@ -167,8 +166,6 @@
       }
     }
   });
-
-  // Banner observer removed to prevent intrusive sliding notifications on forms & login screens
 
   function setNativeValue(element, value) {
     try {

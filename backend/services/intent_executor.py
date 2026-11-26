@@ -395,7 +395,6 @@ class IntentExecutor:
             ow_id = sh_data["owner_id"] if sh_data else 1
             raw_ins = params.get("raw_instruction") or orig_text or "Voice Instruction"
             
-            # Synchronous Live Execution: If instruction has a financial amount, execute immediately into SQL
             from backend.models.ai import get_llm_client
             llm = get_llm_client()
             parsed_contract = llm._rule_based_fallback(raw_ins, shop_id=shop_id)
@@ -758,7 +757,6 @@ class IntentExecutor:
                     lang = detect_language(orig_text or norm_text)
                     new_bal_info = customer_queries.get_customer_balance_in_db(shop_id=shop_id, customer_id=cust_id)
                     new_bal = float(new_bal_info["balance"]) if new_bal_info and new_bal_info.get("balance") is not None else 0.0
-                    # Let Sarvam LLM speak back to the user naturally in their native language
                     from backend.models.ai import generate_conversational_response
                     spoken_msg = generate_conversational_response(
                         original_text=orig_text or norm_text,

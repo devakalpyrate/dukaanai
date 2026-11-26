@@ -1,4 +1,3 @@
-/*! tailwindcss v4.3.5 | MIT License | https://tailwindcss.com */
 @layer properties {
   @supports (((-webkit-hyphens: none)) and (not (margin-trim: block))) or
     ((-moz-orient: inline) and (not (color: rgb(from red r g b)))) {
@@ -335,7 +334,6 @@
   iframe,
   embed,
   object {
-    vertical-align: middle;
     display: block;
   }
   img,
@@ -788,12 +786,14 @@
     margin-left: auto;
   }
   .line-clamp-1 {
+    line-clamp: 1;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
     display: -webkit-box;
     overflow: hidden;
   }
   .line-clamp-2 {
+    line-clamp: 2;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     display: -webkit-box;
@@ -1391,7 +1391,7 @@
     border-bottom-width: calc(1px * calc(1 - var(--tw-divide-y-reverse)));
   }
   :where(.divide-\[\#1E232B\]\/80 > :not(:last-child)) {
-    border-color: oklab(25.4674% -0.00298884 -0.0165619/.8);
+    border-color: oklab(25.4674% -0.00298884 -0.0165619/0.8);
   }
   :where(.divide-\[var\(--border-color\)\] > :not(:last-child)) {
     border-color: var(--border-color);
@@ -1542,16 +1542,16 @@
     border-color: #ffd026;
   }
   .border-\[\#FFD026\]\/20 {
-    border-color: oklab(87.3788% -0.0040389 0.171379/.2);
+    border-color: oklab(87.3788% -0.0040389 0.171379/0.2);
   }
   .border-\[\#FFD026\]\/30 {
-    border-color: oklab(87.3788% -0.0040389 0.171379/.3);
+    border-color: oklab(87.3788% -0.0040389 0.171379/0.3);
   }
   .border-\[\#FFD026\]\/40 {
-    border-color: oklab(87.3788% -0.0040389 0.171379/.4);
+    border-color: oklab(87.3788% -0.0040389 0.171379/0.4);
   }
   .border-\[\#FFD026\]\/70 {
-    border-color: oklab(87.3788% -0.0040389 0.171379/.7);
+    border-color: oklab(87.3788% -0.0040389 0.171379/0.7);
   }
   .border-\[var\(--border-color\)\],
   .border-\[var\(--border-color\)\]\/60 {
@@ -1838,7 +1838,7 @@
     background-color: #0e1217;
   }
   .bg-\[\#0E1217\]\/95 {
-    background-color: oklab(18.0296% -0.00331319 -0.0116612/.95);
+    background-color: oklab(18.0296% -0.00331319 -0.0116612/0.95);
   }
   .bg-\[\#1C1C22\] {
     background-color: #1c1c22;
@@ -1856,7 +1856,7 @@
     background-color: #2e3038;
   }
   .bg-\[\#2E3038\]\/70 {
-    background-color: oklab(31.045% 0.00112106 -0.0145389/.7);
+    background-color: oklab(31.045% 0.00112106 -0.0145389/0.7);
   }
   .bg-\[\#090B0E\] {
     background-color: #090b0e;
@@ -1886,16 +1886,16 @@
     background-color: #ffd026;
   }
   .bg-\[\#FFD026\]\/5 {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.05);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.05);
   }
   .bg-\[\#FFD026\]\/10 {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.1);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.1);
   }
   .bg-\[\#FFD026\]\/20 {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.2);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.2);
   }
   .bg-\[\#FFD026\]\/80 {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.8);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.8);
   }
   .bg-\[\#FFF8E1\] {
     background-color: #fff8e1;
@@ -3304,7 +3304,7 @@
     }
   }
   .ring-\[\#FFD026\]\/50 {
-    --tw-ring-color: oklab(87.3788% -0.0040389 0.171379/.5);
+    --tw-ring-color: oklab(87.3788% -0.0040389 0.171379/0.5);
   }
   .blur-\[140px\] {
     --tw-blur: blur(140px);
@@ -3506,10 +3506,10 @@
     }
   }
   .selection\:bg-\[\#FFD026\]\/30 ::selection {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.3);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.3);
   }
   .selection\:bg-\[\#FFD026\]\/30::selection {
-    background-color: oklab(87.3788% -0.0040389 0.171379/.3);
+    background-color: oklab(87.3788% -0.0040389 0.171379/0.3);
   }
   .selection\:text-\[\#FFD026\] ::selection {
     color: #ffd026;
@@ -3531,10 +3531,10 @@
       border-color: #ffd026;
     }
     .hover\:border-\[\#FFD026\]\/40:hover {
-      border-color: oklab(87.3788% -0.0040389 0.171379/.4);
+      border-color: oklab(87.3788% -0.0040389 0.171379/0.4);
     }
     .hover\:border-\[\#FFD026\]\/50:hover {
-      border-color: oklab(87.3788% -0.0040389 0.171379/.5);
+      border-color: oklab(87.3788% -0.0040389 0.171379/0.5);
     }
     .hover\:border-\[var\(--border-color\)\]:hover {
       border-color: var(--border-color);
@@ -4063,7 +4063,7 @@
       background-color: #12161f;
     }
     .dark\:bg-\[\#16171D\]\/95 {
-      background-color: oklab(20.6276% 0.00163416 -0.011876/.95);
+      background-color: oklab(20.6276% 0.00163416 -0.011876/0.95);
     }
     .dark\:bg-\[\#FFD026\] {
       background-color: #ffd026;
@@ -4560,7 +4560,6 @@
   }
 }
 
-/* DukaanAI Universal Auto-Hiding Branded Scrollbar */
 * {
   scrollbar-width: thin !important;
   scrollbar-color: transparent transparent !important;
@@ -4586,7 +4585,6 @@
     box-shadow 0.4s ease !important;
 }
 
-/* Show branded golden scrollbar ONLY while actively scrolling */
 .is-scrolling::-webkit-scrollbar-thumb,
 .is-scrolling *::-webkit-scrollbar-thumb,
 html.is-scrolling *::-webkit-scrollbar-thumb,
@@ -4608,7 +4606,6 @@ body.is-scrolling *::-webkit-scrollbar-thumb,
   background: transparent !important;
 }
 
-/* Firefox Support */
 .is-scrolling,
 .is-scrolling *,
 html.is-scrolling *,
@@ -4616,7 +4613,6 @@ body.is-scrolling * {
   scrollbar-color: #ffd026 transparent !important;
 }
 
-/* Compatibility classes */
 .dukaan-custom-scrollbar,
 .custom-scrollbar,
 .auto-hide-scrollbar,
@@ -4636,7 +4632,6 @@ body.is-scrolling * {
   scrollbar-color: #ffd026 transparent !important;
 }
 
-/* DukaanAI Ultra-Smooth Navigation Drawer & Sidebar Transitions */
 .dukaan-sidebar-desktop {
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
   will-change: width;

@@ -29,18 +29,21 @@ def load_model(model_id: str = "") -> Any:
     return None
 
 def get_model_info() -> dict[str, Any]:
-    api_key = (
+    bodhan_key = (
         os.getenv("BANDHON_AI_STT_API_KEY")
         or os.getenv("BANDHON_AI_STT_KEY")
         or os.getenv("BANDHON_AI_API_KEY")
         or os.getenv("BODHAN_API_KEY")
     )
+    sarvam_key = os.getenv("SARVAM_API_KEY", "")
+    has_keys = bool(bodhan_key or sarvam_key)
+    provider = "bodhan.ai + sarvam.ai" if (bodhan_key and sarvam_key) else ("bodhan.ai" if bodhan_key else "sarvam.ai")
     return {
-        "model_id": "indic-transcribe",
-        "provider": "bodhan.ai",
+        "model_id": "indic-transcribe / saarika:v2.5",
+        "provider": provider,
         "is_loaded": True,
         "device": "cloud-api",
-        "has_api_key": bool(api_key),
+        "has_api_key": has_keys,
     }
 
 def get_audio_duration(audio_path: str | Path) -> float | None:
@@ -57,6 +60,12 @@ def get_audio_duration(audio_path: str | Path) -> float | None:
         import soundfile as sf
         info = sf.info(str(path))
         return float(info.duration)
+    except Exception:
+        pass
+    try:
+        sz = path.stat().st_size
+        if sz > 0:
+            return round(sz / 32000.0, 2)
     except Exception:
         pass
     return None
@@ -108,11 +117,12 @@ def transcribe_audio(audio_path: str | Path, language: str = None) -> Transcript
         os.getenv("BANDHON_AI_STT_URL")
         or "https://api.bodhan.ai/v1/audio/transcriptions"
     )
+    sarvam_key = os.getenv("SARVAM_API_KEY", "")
 
-    if not bodhan_api_key:
+    if not bodhan_api_key and not sarvam_key:
         error_msg = (
-            "Bodhan AI STT API key is missing. "
-            "Please ensure BANDHON_AI_STT_API_KEY or BODHAN_API_KEY is configured in your .env file."
+            "Voice STT API key is missing. "
+            "Please ensure BANDHON_AI_STT_API_KEY or SARVAM_API_KEY is configured in your .env or Vercel environment."
         )
         logger.error(error_msg)
         raise RuntimeError(error_msg)
@@ -143,43 +153,99 @@ def transcribe_audio(audio_path: str | Path, language: str = None) -> Transcript
     audio_duration = get_audio_duration(path)
     start_time = time.perf_counter()
 
-    try:
-        data_payload: dict[str, Any] = {"model": "indic-transcribe", "vad": True}
-        if target_lang and target_lang not in ("auto", "all", ""):
-            data_payload["language"] = target_lang
+    if bodhan_api_key:
+        try:
+            data_payload: dict[str, Any] = {"model": "indic-transcribe", "vad": True}
+            if target_lang and target_lang not in ("auto", "all", ""):
+                data_payload["language"] = target_lang
 
-        with open(path, "rb") as f:
-            resp = requests.post(
-                stt_url,
-                headers={"Authorization": f"Bearer {bodhan_api_key}"},
-                files={"file": f},
-                data=data_payload,
-                timeout=30,
-            )
+            with open(path, "rb") as f:
+                resp = requests.post(
+                    stt_url,
+                    headers={"Authorization": f"Bearer {bodhan_api_key}"},
+                    files={"file": (path.name, f, "audio/wav")},
+                    data=data_payload,
+                    timeout=25,
+                )
 
-        if resp.status_code == 200:
-            resp_data = resp.json()
-            text = (resp_data.get("text") or "").strip()
-            if is_hallucinated_text(text):
-                logger.info("Ignoring Bodhan STT hallucination text: '%s'", text)
-                text = ""
-            inf_time = round(time.perf_counter() - start_time, 3)
-            rtf = (
-                round(inf_time / audio_duration, 3)
-                if audio_duration and audio_duration > 0
-                else None
-            )
-            return TranscriptionResult(
-                text=text,
-                inference_time_sec=inf_time,
-                audio_duration_sec=round(audio_duration, 2) if audio_duration else None,
-                real_time_factor=rtf,
-                device="cloud-bodhan-stt",
-            )
-        else:
-            logger.error("Bodhan STT returned error code %d: %s", resp.status_code, resp.text)
-            raise RuntimeError(f"Bodhan STT API error ({resp.status_code}): {resp.text}")
+            if resp.status_code == 200:
+                resp_data = resp.json()
+                text = (resp_data.get("text") or "").strip()
+                if is_hallucinated_text(text):
+                    logger.info("Ignoring Bodhan STT hallucination text: '%s'", text)
+                    text = ""
+                inf_time = round(time.perf_counter() - start_time, 3)
+                rtf = (
+                    round(inf_time / audio_duration, 3)
+                    if audio_duration and audio_duration > 0
+                    else None
+                )
+                return TranscriptionResult(
+                    text=text,
+                    inference_time_sec=inf_time,
+                    audio_duration_sec=round(audio_duration, 2) if audio_duration else None,
+                    real_time_factor=rtf,
+                    device="cloud-bodhan-stt",
+                )
+            else:
+                logger.warning(
+                    "Bodhan STT returned error code %d (%s). Falling back to Sarvam AI STT...",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+        except Exception as exc:
+            logger.warning("Bodhan STT attempt failed (%s). Falling back to Sarvam AI STT...", exc)
 
-    except Exception as exc:
-        logger.error("Transcription failed via Bodhan STT: %s", exc)
-        raise RuntimeError(f"Transcription failed: {exc}") from exc
+    if sarvam_key:
+        try:
+            sarvam_lang_map = {
+                "hi": "hi-IN",
+                "ta": "ta-IN",
+                "or": "or-IN",
+                "te": "te-IN",
+                "bn": "bn-IN",
+                "mr": "mr-IN",
+                "gu": "gu-IN",
+                "en": "en-IN",
+            }
+            s_payload = {"model": "saarika:v2.5"}
+            if target_lang and target_lang in sarvam_lang_map:
+                s_payload["language_code"] = sarvam_lang_map[target_lang]
+
+            with open(path, "rb") as f:
+                sarvam_resp = requests.post(
+                    "https://api.sarvam.ai/speech-to-text",
+                    headers={"api-subscription-key": sarvam_key},
+                    files={"file": (path.name, f, "audio/wav")},
+                    data=s_payload,
+                    timeout=25,
+                )
+
+            if sarvam_resp.status_code == 200:
+                s_data = sarvam_resp.json()
+                text = (s_data.get("transcript") or "").strip()
+                if is_hallucinated_text(text):
+                    logger.info("Ignoring Sarvam STT hallucination text: '%s'", text)
+                    text = ""
+                inf_time = round(time.perf_counter() - start_time, 3)
+                rtf = (
+                    round(inf_time / audio_duration, 3)
+                    if audio_duration and audio_duration > 0
+                    else None
+                )
+                logger.info("Successfully transcribed via Sarvam AI STT fallback: '%s'", text)
+                return TranscriptionResult(
+                    text=text,
+                    inference_time_sec=inf_time,
+                    audio_duration_sec=round(audio_duration, 2) if audio_duration else None,
+                    real_time_factor=rtf,
+                    device="cloud-sarvam-stt",
+                )
+            else:
+                logger.error("Sarvam STT returned error code %d: %s", sarvam_resp.status_code, sarvam_resp.text)
+                raise RuntimeError(f"Sarvam STT API error ({sarvam_resp.status_code}): {sarvam_resp.text}")
+        except Exception as s_exc:
+            logger.error("Sarvam STT fallback also failed: %s", s_exc)
+            raise RuntimeError(f"All STT providers failed. Last error: {s_exc}") from s_exc
+
+    raise RuntimeError("Transcription failed: No responsive STT provider available.")

@@ -2,7 +2,6 @@ import os
 import sys
 from pathlib import Path
 
-# Add project root to sys.path so backend imports work seamlessly
 root_dir = Path(__file__).resolve().parent.parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
@@ -19,7 +18,6 @@ except Exception as e:
     async def catch_all(path_name: str):
         return HTMLResponse(f"<h1>Startup Error on Vercel</h1><pre>{err_tb}</pre>", status_code=500)
 
-# Top-level ASGI entrypoints for Vercel Serverless Function
 app = app
 application = app
 handler = app

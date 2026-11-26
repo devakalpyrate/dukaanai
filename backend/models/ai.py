@@ -207,7 +207,6 @@ class GroqLLMClient:
                 clarification_question="Koi instruction nahi mila. Kripya dobara bolein.",
             )
 
-        # 1. Sarvam AI Primary Path (Indian Multilingual 22+ Languages Expert: Odia, Hindi, Tamil, Telugu, etc.)
         sarvam_key = os.getenv("SARVAM_API_KEY", "")
         if sarvam_key and sarvam_key != "your_sarvam_api_key_here":
             try:
@@ -264,13 +263,11 @@ class GroqLLMClient:
             except Exception as sarvam_err:
                 logger.warning("Sarvam AI primary call failed, falling back to smart Kirana engine: %s", sarvam_err)
 
-        # 2. Resilient Smart Offline Kirana Path (Fallback if Sarvam is unreachable or offline)
         instant_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
         if instant_res:
             logger.info("Resolved intent via resilient offline Kirana engine: %s", instant_res.action)
             return instant_res
 
-        # 3. Fallback Remote LLM Path (Groq): Only invoked if Sarvam is unavailable or unmapped
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
         ]
@@ -342,13 +339,11 @@ class GroqLLMClient:
 
         logger.error("Groq API call error: %s", last_exc)
         
-        # Smart local fallback: resolve common Kirana intents even when Groq is unavailable
         fallback_res = self._rule_based_fallback(raw_text, shop_id=shop_id)
         if fallback_res:
             logger.info("Successfully resolved intent via smart offline Kirana fallback: %s", fallback_res.action)
             return fallback_res
 
-        # Resilient recording fallback: never cut off user flow or drop instructions
         logger.info("Recording pending instruction while AI service is busy: %s", raw_text)
         return CanonicalIntentContract(
             intent="credit_transaction",
@@ -372,7 +367,6 @@ class GroqLLMClient:
             'ग्यारह': 11, 'बारह': 12, 'तेरह': 13, 'चौदह': 14, 'पंद्रह': 15, 'सोलह': 16, 'सत्रह': 17, 'अठारह': 18, 'उन्नीस': 19, 'बीस': 20,
             'पच्चीस': 25, 'तीस': 30, 'पैंतीस': 35, 'चालीस': 40, 'पैंतालीस': 45, 'पचास': 50, 'साठ': 60, 'सत्तर': 70, 'अस्सी': 80, 'नब्बे': 90,
             'सौ': 100, 'हज़ार': 1000, 'हजार': 1000, 'लाख': 100000, 'करोड़': 10000000,
-            # Hinglish
             'ek': 1, 'do': 2, 'teen': 3, 'char': 4, 'paanch': 5, 'panch': 5, 'chhe': 6, 'saat': 7, 'aath': 8, 'nau': 9, 'das': 10, 'dus': 10,
             'gyarah': 11, 'barah': 12, 'pandrah': 15, 'bees': 20, 'pachees': 25, 'tees': 30, 'chalis': 40, 'pachas': 50, 'pachaas': 50,
             'sau': 100, 'hazar': 1000, 'hazaar': 1000, 'lakh': 100000
@@ -385,10 +379,8 @@ class GroqLLMClient:
         }
 
         def _parse_amount(s: str) -> Optional[float]:
-            # Normalize Devanagari numerals
             s = s.translate(str.maketrans('०१२३४५६७८९', '0123456789'))
 
-            # Direct digits with commas or units
             m = re.search(r'(?:₹|rs\.?|rupaye|रुपये|रुपया)?\s*(\b\d{1,3}(?:,\d{2,3})*(?:\.\d+)?|\b\d+(?:\.\d+)?)\s*(?:₹|rs\.?|rupaye|रुपये|रुपया)?\b', s, re.I)
             if m:
                 try:
@@ -405,7 +397,6 @@ class GroqLLMClient:
                 except ValueError:
                     pass
 
-            # Devanagari & Hindi words e.g. 'पाँच हज़ार' or 'पांच हजार' or 'दस लाख'
             words = s.split()
             for i, w in enumerate(words):
                 if w in HINDI_NUMBERS:
@@ -432,7 +423,6 @@ class GroqLLMClient:
             return None
 
         def _extract_customer(s: str, default: str = "Customer") -> str:
-            # 1. High-confidence explicit name markers: "X के नाम पर", "X के नाम पे", "X के खाते में"
             m_naam_matches = list(re.finditer(r'([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)\s+(?:के\s+नाम\s+(?:पर|पे)|के\s+खाते\s+में)', s))
             if m_naam_matches:
                 for m in reversed(m_naam_matches):
@@ -441,7 +431,6 @@ class GroqLLMClient:
                     if cand_words:
                         return ' '.join(cand_words).title()
 
-            # 2. Check for "for Ramesh" or "to Suresh"
             m_for = re.search(r'(?:for|to|of)\s+([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)', s, re.I)
             if m_for:
                 cand = m_for.group(1).strip()
@@ -449,7 +438,6 @@ class GroqLLMClient:
                 if cand_words:
                     return ' '.join(cand_words).title()
 
-            # 3. Check for "Ramesh ka/ko/ke/se/ne" or "रमेश का/को/के/से/ने"
             m_ka_matches = list(re.finditer(r'([a-zA-Z\u0900-\u097F]+(?:\s+[a-zA-Z\u0900-\u097F]+)?)\s+(?:ka|ko|ke|se|ne|का|को|के|से|ने)\b', s, re.I))
             for m in reversed(m_ka_matches):
                 cand = m.group(1).strip()
@@ -459,7 +447,6 @@ class GroqLLMClient:
 
             return default
 
-        # 1. Udhaar / Credit Transaction
         is_credit = any(k in lower for k in ["udhaar", "udhar", "credit", "baki", "baaki", "baaqi", "khat", "likh", "likho", "उधार", "बाकी", "लिख", "लिखो", "खाता", "खाते"])
         if is_credit or ("add" in lower and any(c in lower for c in ["person", "grahak", "customer", "₹", "rs", "rupaye", "रुपये"])):
             amt = _parse_amount(raw)
@@ -488,7 +475,6 @@ class GroqLLMClient:
                     conversational_response=conv_resp,
                 )
 
-        # 2. Jama / Debit / Payment Transaction
         is_payment = any(k in lower for k in ["jama", "payment", "paid", "diye", "diya", "chuka", "vasool", "vasooli", "received", "aaye", "aaya", "bheja", "जमा", "पेमेंट", "दिए", "दिया", "चुकाया", "प्राप्त"])
         if is_payment:
             amt = _parse_amount(raw)
@@ -517,7 +503,6 @@ class GroqLLMClient:
                     conversational_response=conv_resp,
                 )
 
-        # 3. Add Customer
         m_cust = re.search(r'(?:add\s+customer|naya\s+customer|customer\s+banao|customer\s+jodo)\s+([a-zA-Z\u0900-\u097F]+)(?:\s+(\d{10}))?', lower)
         if not m_cust:
             m_cust = re.search(r'([a-zA-Z\u0900-\u097F]+)\s+(?:ko\s+customer\s+(?:me\s+)?(?:add|banao|jodo))', lower)
@@ -535,7 +520,6 @@ class GroqLLMClient:
                 conversational_response=f"Ji bhaiya, naye customer {cust} ko khate me jod diya hai.",
             )
 
-        # 4. Check Balance / Ledger
         if any(w in lower for w in ["khata dikhao", "hisab batao", "balance batao", "total udhar", "kitna udhar", "check balance"]):
             cust = _extract_customer(lower, default="")
             return CanonicalIntentContract(
@@ -549,7 +533,6 @@ class GroqLLMClient:
                 conversational_response=f"Ji bhaiya, {cust} ji ka khata check kar rahe hain." if cust else "Ji bhaiya, dukaan ka khata check kar rahe hain.",
             )
 
-        # 5. Direct Name + Amount Fallback (e.g. "Ramesh 500", "500 Ramesh", "Ramesh ko 500")
         amt = _parse_amount(raw)
         if amt and amt > 0:
             cust = _extract_customer(raw, default="")
@@ -577,7 +560,6 @@ class GroqLLMClient:
                     conversational_response=f"Theek hai bhaiya, {cust} ji ke khate me ₹{disp_val} ka udhaar darj kar diya hai.",
                 )
 
-        # 5. List Customers
         if any(w in lower for w in ["customer list", "grahak list", "sabhi customer", "sabhi grahak", "customers dikhao"]):
             return CanonicalIntentContract(
                 intent="customer_management",
@@ -590,7 +572,6 @@ class GroqLLMClient:
                 conversational_response="Ji bhaiya, aapke dukaan ke registered grahakon ki list yeh rahi.",
             )
 
-        # 6. Greeting / Conversation
         if any(w in lower for w in ["hello", "namaste", "hi", "hey", "kaise ho", "kya haal"]):
             return CanonicalIntentContract(
                 intent="conversation",
@@ -617,12 +598,6 @@ def generate_conversational_response(
     details: Dict[str, Any],
     shop_id: Optional[int] = None,
 ) -> str:
-    """
-    Dynamically generates a natural, warm, and culturally authentic response in the shopkeeper's
-    exact spoken native language using Sarvam AI (supporting 22 Indian languages: Odia, Tamil,
-    Telugu, Kannada, Malayalam, Bengali, Marathi, Gujarati, Hindi, English, etc.).
-    Eliminates robotic hardcoded templates completely.
-    """
     sarvam_key = os.getenv("SARVAM_API_KEY", "")
     if sarvam_key and sarvam_key != "your_sarvam_api_key_here":
         try:

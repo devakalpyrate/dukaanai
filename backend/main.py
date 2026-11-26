@@ -417,7 +417,6 @@ def get_current_shop(
             detail="Malformed token payload.",
         )
     
-    # 1. Strictly verify that the user still exists in the database
     user = user_queries.get_user_by_id(user_id)
     if not user:
         raise HTTPException(
@@ -426,7 +425,6 @@ def get_current_shop(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 2. Strictly verify that the shop exists and belongs to this exact user
     shop = shop_queries.get_shop_by_id(shop_id)
     if not shop or str(shop.get("owner_id")) != str(user_id):
         raise HTTPException(
@@ -435,7 +433,6 @@ def get_current_shop(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 3. Multi-device live session check: verify another device has not terminated the session
     token_iat = float(payload.get("iat") or 0)
     if token_iat > 0:
         try:
@@ -694,7 +691,6 @@ def login_endpoint(request: Request, payload: LoginPayload):
                 detail="Invalid or expired verification code.",
             )
     else:
-        # Password-based step (or initial 2FA credential check)
         if not payload.password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -706,7 +702,6 @@ def login_endpoint(request: Request, payload: LoginPayload):
                 detail="Unable to log in. Check your credentials and try again.",
             )
 
-        # Generate and dispatch 2FA OTP code to registered email
         code = f"{random.randint(100000, 999999)}"
         user_email = (user.get("email") or "").lower()
         user_phone = user.get("phone") or ""
@@ -865,11 +860,9 @@ def reset_password_endpoint(request: Request, payload: ResetPasswordPayload):
             detail="Invalid or expired verification code.",
         )
 
-    # Hash new password with hardened PBKDF2-SHA256
     new_hash = hash_password(payload.new_password)
     user_id = user["id"]
     
-    # Update password in Supabase users table - all shop, customer, and transaction foreign keys stay 100% intact!
     user_queries.update_user(user_id, password_hash=new_hash)
     if user.get("deleted_at"):
         user_queries.restore_user(user_id)
@@ -920,7 +913,6 @@ def restore_account_endpoint(request: Request, payload: RestoreAccountPayload):
             detail="No account found with this mobile number or email.",
         )
 
-    # Verify via OTP or Password
     user_phone = user.get("phone") or ""
     user_email = (user.get("email") or "").lower()
     verified = False
@@ -965,7 +957,6 @@ def restore_account_endpoint(request: Request, payload: RestoreAccountPayload):
                 detail="This account has been permanently archived after the 30-day grace period.",
             )
 
-    # Restore user
     user_queries.restore_user(user_id)
     user_queries.record_user_login(user_id)
 
@@ -1236,7 +1227,6 @@ async def delete_account_endpoint(
         except Exception as mail_err:
             logger.error("Failed to send account deletion statement email: %s", mail_err)
 
-    # Safe Soft Deletion with 30-Day Grace Period
     user_queries.soft_delete_user(user_id)
 
     logger.info("Account marked as soft-deleted for user %d (shop %d) with 30-day grace period. Statement emailed to %s", user_id, shop_id, user_email)
@@ -1591,7 +1581,6 @@ def understand_intent_endpoint(
                 error_message=None,
             )
         
-        # Try local gRPC if available
         try:
             client = get_grpc_client()
             result = client.understand_intent(
@@ -1605,7 +1594,6 @@ def understand_intent_endpoint(
         except Exception as grpc_err:
             logger.warning("Local gRPC unavailable, falling back to direct LLM pipeline: %s", grpc_err)
 
-        # Resilient fallback to GroqLLMClient with local Kirana intent fallback
         from backend.models.ai import GroqLLMClient
         llm = GroqLLMClient()
         contract = llm.understand_intent(

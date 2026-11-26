@@ -1,14 +1,4 @@
-/**
- * DukaanAI Auth Session & Language/Font Synchronization
- * ====================================================
- * 1. Synchronous startup handshake with `/api/auth/me`
- * 2. Instant syncing of database preferences (language, theme, shop info)
- * 3. Dynamic multilingual typography & font switching (Inter, Devanagari, Tamil, etc.)
- * 4. Fast, sleek splash loading state between login & dashboard
- */
-
 (function () {
-  // --- 1. Multilingual Typography Engine ---
   var langFontMap = {
     en: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     hi: "'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', sans-serif",
@@ -39,7 +29,6 @@
     } catch (e) {}
   };
 
-  // --- 2. Ultra-Fast Sleek Loader Engine ---
   window.showDukaanFastLoader = function (msg) {
     var loader = document.getElementById("dukaan-app-fast-loader");
     if (!loader) return;
@@ -64,28 +53,24 @@
     }, d);
   };
 
-  // Listen to language change events from Settings
   window.addEventListener("dukaan_lang_change", function (e) {
     if (e && e.detail) {
       window.applyLanguageFont(e.detail);
     }
   });
 
-  // Apply font immediately on script execution
   window.applyLanguageFont(localStorage.getItem("dukaanai_language") || "en");
 
-  // --- 3. Instant Startup Handshake: Sync Database Settings Before React Renders ---
   var token = localStorage.getItem("dukaanai_token");
   if (token) {
     try {
       var xhr = new XMLHttpRequest();
-      xhr.open("GET", "/api/auth/me", false); // Synchronous pre-flight before React loads
+      xhr.open("GET", "/api/auth/me", false);
       xhr.setRequestHeader("Authorization", "Bearer " + token);
       xhr.setRequestHeader("Content-Type", "application/json");
       xhr.send();
 
       if (xhr.status === 401 || xhr.status === 404) {
-        // Account has been deleted or session expired
         localStorage.clear();
         sessionStorage.clear();
         if (
@@ -127,7 +112,6 @@
     } catch (e) {}
   }
 
-  // --- 4. Global Fetch 401 Interceptor ---
   var origFetch = window.fetch;
   window.fetch = async function () {
     var res = await origFetch.apply(this, arguments);
@@ -156,7 +140,6 @@
     return res;
   };
 
-  // --- 5. Periodic Background Session Heartbeat (Every 10s & on Tab Focus) ---
   function checkSessionAlive() {
     var tk = localStorage.getItem("dukaanai_token");
     if (tk) {
@@ -200,7 +183,6 @@
   setInterval(checkSessionAlive, 10000);
   window.addEventListener("focus", checkSessionAlive);
 
-  // Hide initial loader once DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       window.hideDukaanFastLoader(300);

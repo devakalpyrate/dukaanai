@@ -1,14 +1,4 @@
-/**
- * DukaanAI Plans & Pricing Configuration
- * =====================================
- * This file cleanly separates all pricing plans, features, and descriptions.
- * Modify this file to update prices, add new features, or change plan details.
- */
-
 window.DukaanPlansConfig = {
-  // -------------------------------------------------------------
-  // 1. FREE PLAN (Currently Active)
-  // -------------------------------------------------------------
   free: {
     id: "free",
     name: "Free Plan",
@@ -32,9 +22,6 @@ window.DukaanPlansConfig = {
     isCurrentPlan: true,
   },
 
-  // -------------------------------------------------------------
-  // 2. QUARTERLY PLAN (Coming Soon)
-  // -------------------------------------------------------------
   quarterly: {
     id: "quarterly",
     name: "Quarterly Plan",
@@ -59,9 +46,6 @@ window.DukaanPlansConfig = {
     isCurrentPlan: false,
   },
 
-  // -------------------------------------------------------------
-  // 3. YEARLY PLAN (Coming Soon) - Best Value
-  // -------------------------------------------------------------
   yearly: {
     id: "yearly",
     name: "Yearly Plan",

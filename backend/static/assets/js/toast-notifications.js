@@ -156,8 +156,6 @@
     }
   });
 
-  // Banner observer removed to prevent intrusive sliding notifications on forms & login screens
-
   function setNativeValue(element, value) {
     try {
       var valueSetter = Object.getOwnPropertyDescriptor(element, "value")?.set;

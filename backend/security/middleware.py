@@ -9,11 +9,6 @@ from backend.security.sql_guard import detect_sql_injection
 logger = logging.getLogger("dukaanai.security")
 
 class SQLInjectionGuardMiddleware(BaseHTTPMiddleware):
-    """
-    Application-level SQL Injection firewall.
-    Inspects URL query parameters and query string for malicious SQL injection signatures
-    commonly tested by penetration testing tools (SQLMap, Burp Suite, etc.).
-    """
     async def dispatch(self, request: Request, call_next):
         raw_query = unquote(request.url.query or "")
         if raw_query:

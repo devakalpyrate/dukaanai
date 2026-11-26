@@ -1,4 +1,3 @@
-/* DukaanAI Universal Auto-Hiding Branded Scrollbar */
 * {
   scrollbar-width: thin !important;
   scrollbar-color: transparent transparent !important;
@@ -24,7 +23,6 @@
     box-shadow 0.4s ease !important;
 }
 
-/* Show branded golden scrollbar ONLY while actively scrolling */
 .is-scrolling::-webkit-scrollbar-thumb,
 .is-scrolling *::-webkit-scrollbar-thumb,
 html.is-scrolling *::-webkit-scrollbar-thumb,
@@ -46,7 +44,6 @@ body.is-scrolling *::-webkit-scrollbar-thumb,
   background: transparent !important;
 }
 
-/* Firefox Support */
 .is-scrolling,
 .is-scrolling *,
 html.is-scrolling *,
@@ -54,7 +51,6 @@ body.is-scrolling * {
   scrollbar-color: #ffd026 transparent !important;
 }
 
-/* Compatibility classes */
 .dukaan-custom-scrollbar,
 .custom-scrollbar,
 .auto-hide-scrollbar,

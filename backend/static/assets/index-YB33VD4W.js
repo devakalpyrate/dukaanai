@@ -35733,6 +35733,13 @@ var bh = Km(
         (r(`transcribing`), b(`Processing...`), S(45), w(`45%`));
         let t = localStorage.getItem(`dukaanai_token`);
         try {
+          if (window.__dukaanBlobToWav) {
+            try {
+              e = await window.__dukaanBlobToWav(e);
+            } catch (we) {
+              console.warn("WAV conversion error:", we);
+            }
+          }
           let n = new FormData(),
             i = e.type.includes(`wav`)
               ? `wav`

@@ -1,4 +1,3 @@
-"""DukaanAI backend application package."""
 import sys
 
 from backend.main import app

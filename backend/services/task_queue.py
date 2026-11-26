@@ -10,8 +10,6 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Strict Per-Shop FIFO Queues
-# Map: shop_id -> queue.Queue (Guarantees strict First-In-First-Out processing per merchant)
 _shop_queues: Dict[int, queue.Queue] = {}
 _shop_workers: Dict[int, threading.Thread] = {}
 _tasks_store: Dict[str, Dict[str, Any]] = {}
@@ -19,14 +17,6 @@ _manager_lock = threading.Lock()
 
 
 class ShopFIFOQueueManager:
-    """
-    Strict FIFO Queue Manager with complete per-merchant isolation.
-    - Each shop_id has its own dedicated FIFO queue and worker thread.
-    - Preserves strict FIFO order (First In First Out) for all tasks.
-    - User Privacy & LLM Isolation: The LLM is only passed anonymized clean text,
-      never merchant IDs, user tokens, or cross-merchant metadata.
-    - Responses and mutations are routed strictly to the originating shop_id / user_id.
-    """
 
     @classmethod
     def get_or_create_shop_queue(cls, shop_id: int) -> queue.Queue:
@@ -60,7 +50,6 @@ class ShopFIFOQueueManager:
             "task_id": task_id,
             "shop_id": shop_id,
             "user_id": user_id,
-            # LLM Isolation: raw_text only, no internal cross-user metadata
             "raw_text": (raw_text or "").strip(),
             "action": action,
             "parameters": parameters or {},
@@ -71,14 +60,12 @@ class ShopFIFOQueueManager:
             "error": None,
         }
         _tasks_store[task_id] = task_data
-        # Put into shop's FIFO queue (strict FIFO order)
         q.put(task_data)
         logger.info("Enqueued FIFO task %s for shop %s: %s", task_id, shop_id, raw_text)
         return task_id
 
     @classmethod
     def enqueue(cls, shop_id: int, user_id: int, text: str, **kwargs) -> str:
-        """Alias for enqueue_task for compatibility across modules."""
         return cls.enqueue_task(shop_id=shop_id, user_id=user_id, raw_text=text, **kwargs)
 
     @classmethod
@@ -86,7 +73,6 @@ class ShopFIFOQueueManager:
         q = _shop_queues[shop_id]
         while True:
             try:
-                # Blocks until next task for this specific shop arrives (Strict FIFO)
                 task = q.get()
                 if task is None:
                     break
@@ -113,29 +99,24 @@ class ShopFIFOQueueManager:
             from backend.queries import notification as notification_queries
             from backend.queries import shops as shop_queries
 
-            # Resolve actual owner_id if user_id was generic
             sh = shop_queries.get_shop_by_id(shop_id)
             actual_user_id = (sh.get("owner_id") if sh else None) or user_id
 
             llm = GroqLLMClient()
 
-            # 1. First attempt: Smart zero-latency Kirana rule-based parsing
             contract = llm._rule_based_fallback(raw_text, shop_id=shop_id)
 
-            # 2. Second attempt if rule-based did not match: Anonymized LLM parsing
-            # LLM Isolation: Pass ONLY the raw instruction, NO shop_id, NO user_id, NO tokens
             if not contract or contract.action in ("request_recorded_pending", "none", "unknown"):
                 try:
                     if llm.is_configured():
                         contract = llm.understand_intent(
                             text=raw_text,
                             context=None,
-                            shop_id=None,  # Explicitly None to prevent LLM knowing shop_id
+                            shop_id=None,
                         )
                 except Exception as llm_err:
                     logger.warning("LLM parsing unavailable during FIFO processing: %s", llm_err)
 
-            # Execute transaction if credit or payment was recognized
             if contract and contract.action in ("record_credit", "record_payment", "record_debit"):
                 p = contract.parameters
                 cust_name = p.get("customer_name") or "Customer"
@@ -156,7 +137,6 @@ class ShopFIFOQueueManager:
                         description="Voice FIFO ledger update",
                     )
 
-                    # Create clean merchant notification in this shop's notification inbox
                     amt_disp = int(amt) if amt.is_integer() else f"{amt:,.2f}"
                     if t_type == "credit":
                         n_title = f"नया उधार / Credit: {resolved_cust['name']}"
@@ -182,7 +162,6 @@ class ShopFIFOQueueManager:
                     logger.info("Shop %s FIFO task %s completed successfully: tx_id=%s", shop_id, task_id, tx.get("id"))
                     return
 
-            # If general voice note, record cleanly without confusing technical jargon
             try:
                 notification_queries.create_notification(
                     shop_id=shop_id,
@@ -205,5 +184,4 @@ class ShopFIFOQueueManager:
             task["completed_at"] = datetime.now(timezone.utc).isoformat()
 
 
-# Backwards compatibility and shorthand alias
 DukaanTaskQueue = ShopFIFOQueueManager

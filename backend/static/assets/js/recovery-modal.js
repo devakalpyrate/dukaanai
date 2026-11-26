@@ -1,21 +1,6 @@
-/**
- * DukaanAI 4-Tab Top Header Navigation & Account Recovery
- * ======================================================
- * 1. Fixed Top Header Tab Bar:
- *    [ Log In ]  [ Register ]  [ Forgot Password ]  [ Restore ]
- *    - Positioned at the very top of the right panel (like a website header)
- *    - Pinned with sticky positioning; never shifts or moves on tab change
- *    - Clean, large, prominent tabs with distinct active indicator
- * 2. Seamless Tab Routing:
- *    - Log In: Shows native DukaanAI Login form
- *    - Register: Directly invokes React registration state, showing native Register Store form
- *    - Forgot Password: 3-step secure flow (Send OTP -> Verify OTP without login -> Set New Password -> Hashed DB save)
- *    - Restore: In-place 30-day soft-delete store restoration
- */
-
 (function () {
-  let activeTab = "login"; // "login" | "register" | "forgot" | "restore"
-  let forgotStep = 1; // 1: Send OTP, 2: Verify OTP, 3: Set New Password
+  let activeTab = "login";
+  let forgotStep = 1;
   let verifiedIdentifier = "";
   let verifiedOtp = "";
   let maskedEmail = "";
@@ -23,11 +8,10 @@
   let countdownTimer = null;
 
   function isAuthScreen() {
-    // If user has a valid login token, they are in the merchant dashboard - NEVER auth screen!
     if (localStorage.getItem("dukaanai_token")) {
       return false;
     }
-    // Only target the specific auth screen container
+
     return !!document.getElementById("dukaan-auth-main");
   }
 
@@ -60,7 +44,6 @@
     const main = getMainContainer();
     if (!main) return;
 
-    // 1. Hide the old 2-tab pill bar inside the card if present
     const nativeTabs =
       document.getElementById("dukaan-native-tabs-bar") ||
       document.querySelector('div[class*="bg-[#1E1F26]"][class*="rounded-xl"]');
@@ -68,7 +51,6 @@
       nativeTabs.style.display = "none";
     }
 
-    // 2. Hide redundant bottom helper links that conflict with top tabs
     const bottomLinks = document.querySelectorAll("span, a");
     bottomLinks.forEach((el) => {
       const txt = (el.innerText || "").trim().toLowerCase();
@@ -93,7 +75,6 @@
       }
     });
 
-    // 3. Inject top header tab bar as the very first child of <main>
     let topBar = document.getElementById("dukaan-top-tabs-bar");
     if (!topBar) {
       topBar = document.createElement("header");
@@ -130,7 +111,6 @@
         switchTab("restore");
     }
 
-    // Intercept native "Register your store" and "Log in" anchor links inside forms
     document.querySelectorAll("span, a, button").forEach((el) => {
       const text = (el.innerText || "").trim().toLowerCase();
       if (text === "register your store" || text === "register store") {
@@ -214,7 +194,6 @@
     const parent = getLoginCardParent();
     if (!parent) return;
 
-    // Clear and hide any stale top error banners rendered by React
     const staleErrors = parent.querySelectorAll('div[class*="bg-rose-500"]');
     staleErrors.forEach((el) => {
       if (!el.closest("#dukaan-inplace-recovery-container")) {
@@ -300,14 +279,10 @@
     }, 1000);
   }
 
-  // ==========================================
-  // --- 1. FORGOT PASSWORD 3-STEP FLOW ---
-  // ==========================================
   function renderForgotPasswordForm(container) {
     if (!container) return;
 
     if (forgotStep === 1) {
-      // Step 1: Identifier Input -> Send OTP
       container.innerHTML = `
         <form id="inplace-step1-form" class="space-y-4">
           <div>
@@ -343,7 +318,6 @@
       const btnSend = document.getElementById("fp-btn-send");
       const input = document.getElementById("fp-identifier");
 
-      // Auto-prefill if user typed in login form
       const loginUnified = document.querySelector(
         'input[placeholder*="mobile or email"]',
       );
@@ -413,7 +387,6 @@
         }
       };
     } else if (forgotStep === 2) {
-      // Step 2: Enter 6-digit Code -> Verify Code (DO NOT LOG IN!)
       container.innerHTML = `
         <form id="inplace-step2-form" class="space-y-4">
           <div class="flex items-center justify-between">
@@ -521,7 +494,6 @@
         errBox.style.display = "none";
 
         try {
-          // Verify code with backend (without logging in)
           const res = await fetch("/api/auth/verify-otp", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -536,7 +508,7 @@
             );
 
           verifiedOtp = code;
-          // IMPORTANT: Do NOT log in. Advance directly to Step 3 for New Password!
+
           forgotStep = 3;
           renderForgotPasswordForm(container);
           window.showDukaanNotification &&
@@ -557,7 +529,6 @@
         }
       };
     } else if (forgotStep === 3) {
-      // Step 3: Enter New Password & Confirm Password -> Hashed DB Save
       container.innerHTML = `
         <form id="inplace-step3-form" class="space-y-4">
           <div>
@@ -652,7 +623,6 @@
               data.detail || data.error?.message || "Failed to reset password.",
             );
 
-          // Reset local variables
           verifiedOtp = "";
           forgotStep = 1;
 
@@ -663,7 +633,6 @@
               type: "success",
             });
 
-          // Switch back to Log In tab and pre-fill identifier
           switchTab("login");
           setTimeout(() => {
             const loginInputs = document.querySelectorAll(
@@ -689,9 +658,6 @@
     }
   }
 
-  // ==========================================
-  // --- 2. RESTORE STORE FORM ---
-  // ==========================================
   function renderRestoreAccountForm(container) {
     if (!container) return;
 
