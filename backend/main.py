@@ -1745,15 +1745,21 @@ def get_customer_invoice_pdf_endpoint(
     request: Request,
     shop_id: Optional[int] = Query(None),
 ):
+    enforce_rate_limit(request, category="lookup")
     target_shop_id = shop_id
-    if not target_shop_id:
-        auth_hdr = request.headers.get("Authorization")
-        if auth_hdr and auth_hdr.startswith("Bearer "):
-            try:
-                payload = decode_access_token(auth_hdr.split(" ")[1])
-                target_shop_id = payload.get("shop_id")
-            except Exception:
-                pass
+    auth_hdr = request.headers.get("Authorization")
+    if auth_hdr and auth_hdr.startswith("Bearer "):
+        try:
+            payload = decode_access_token(auth_hdr.split(" ")[1])
+            token_shop = payload.get("shop_id")
+            if token_shop:
+                if target_shop_id and str(target_shop_id) != str(token_shop):
+                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-store access denied.")
+                target_shop_id = token_shop
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     if not target_shop_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required to view invoice.")
 
